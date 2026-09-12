@@ -1,0 +1,6 @@
+{
+  "phase": "source preparation before runtime edits or builds",
+  "error": "Observer anchor occurs in four functions; generator omitted the established function-scoped fallback",
+  "correction": "Restrict repeated anchor to rust_star_metal_run_prefill_layer0_boundary, matching prior observer generator",
+  "runtime_changed": false
+}

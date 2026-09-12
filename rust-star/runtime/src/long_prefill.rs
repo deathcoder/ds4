@@ -1085,13 +1085,17 @@ fn run_long_prefill_with_reference(
             return Err(Error::invalid(error_text(&error)));
         }
         let stage_start = profile.start();
-        let (_, bootstrap_timing) = run_prefill_layers012_compressor_loop_probe_in_context(
+        // Only the lower-context native continuation uses a 1K
+        // bootstrap batch. Prefix, legacy callers and larger frontiers keep 64.
+        let bootstrap_tile_rows = if frontier <= 32768 { 1024 } else { 64 };
+        let (_, bootstrap_timing) = run_prefill_layers012_compressor_loop_with_tile_rows(
             model,
             &context,
             false,
             start,
             end,
             Some(&tokens[..end as usize]),
+            bootstrap_tile_rows,
         )?;
         profile.record(
             start,

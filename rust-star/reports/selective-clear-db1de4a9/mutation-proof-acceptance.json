@@ -1,0 +1,21 @@
+{
+  "passed": true,
+  "utc": "2026-09-12T16:35:22.237525+00:00",
+  "result": {
+    "cases": 24,
+    "checked_bytes": 2147549248,
+    "guard_bytes": 24576,
+    "missing_mutation_negative_controls": 12,
+    "passed": true,
+    "shortened_copy_negative_controls": 12
+  },
+  "files": {
+    "plan.json": "8283268b1b102fbf08d9e19d5fedd3e935bf636bee5ccba9e2e8d0ff0d1afbce",
+    "mutation-proof.m": "9db45e3272fded155205f39601f51df0bb0a79eb5216d65d8da50d3432fe4c59",
+    "mutation-proof.metal": "591ff975f63dc3a0e3aa888e060abe4e6eaef32f2434b91dee3a61445d0a731f",
+    "inventory.json": "2067290cf8944a19a3e24a46c8e2495842facfd5f6d0f000fe253f19fb662a89",
+    "run-mutation-proof.py": "59d0d764d709d3999297dcecdbb5f86c3b156aa09e220188b4d02c07e85dce8d"
+  },
+  "runtime_unchanged": true,
+  "previous_diagnostic_verdict_unchanged": true
+}

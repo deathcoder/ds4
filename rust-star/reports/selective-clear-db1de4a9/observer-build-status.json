@@ -1,0 +1,17 @@
+{
+  "name": "observer-build",
+  "args": [
+    "clang",
+    "-O2",
+    "-fobjc-arc",
+    "-framework",
+    "Foundation",
+    "-framework",
+    "Metal",
+    "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/selective-clear-db1de4a9/observer-proof.m",
+    "-o",
+    "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/selective-clear-db1de4a9/observer-proof"
+  ],
+  "exit_code": 0,
+  "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

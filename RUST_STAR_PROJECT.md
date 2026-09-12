@@ -625,6 +625,14 @@ engine gates. Synthetic RSS savings do not predict whole-engine acceptance,
 DwarfStar parity or larger-frontier correctness. The diagnostic milestone is
 closed with the gap disclosed; stop for the user update.
 
+The subsequent selective scratch initialization milestone is retained.
+Its new guarded mutation proof closes the prior test gap without rewriting the
+old diagnostic verdict. Four full-copy destinations omit clearing; source
+initializers and checked completion are preserved. prefill -11.054%, steady decode +1.362%, RSS +1.819%, footprint +3.728%.
+Candidate production source and executable are retained locally. Verified 223-artifact report:
+`rust-star/reports/selective-clear-db1de4a9/README.md`. Next milestone, not started: Refresh the direct 32K comparison between the newly accepted Rust runtime and pinned DwarfStar on the same model, prompt and 128-token decode workload. Use fresh paired processes and the existing strict measurement adapters to quantify the remaining performance gap, then choose the next bottleneck from the current profile. Keep larger-frontier work and publication deferred. This proposal has not started.
+Stop after reporting this completed milestone.
+
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-09, native prefill through all 43 layers
 and the output head is C0 exact at 128K, with 128 exact full-logit decode steps

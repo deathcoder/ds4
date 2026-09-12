@@ -263,6 +263,18 @@ static NSString *const kQ8ProjectionSource =
     @"    kernel_mul_mv_q8_0_f32_impl<8>(args, src0, src1, dst, shmem, tgpig, tiisg, sgitg);\n"
     @"}\n";
 
+// One initialized scratch set, owned only during four native bootstrap tiles.
+@interface RustStarBootstrapScratch : NSObject
+@property(nonatomic, strong) NSMutableDictionary<NSString *, id<MTLBuffer>> *buffers;
+@property(nonatomic, strong) NSMutableSet<NSString *> *checkedOut;
+@property(nonatomic, strong) id<MTLCommandBuffer> priorCommand;
+@property(nonatomic) NSUInteger bytes;
+@property(nonatomic) uint32_t frontier;
+@property(nonatomic) uint32_t nextPosition;
+@end
+@implementation RustStarBootstrapScratch
+@end
+
 @interface RustStarMetalContext : NSObject
 @property(nonatomic, strong) id<MTLDevice> device;
 @property(nonatomic, strong) id<MTLCommandQueue> queue;
@@ -397,6 +409,7 @@ static NSString *const kQ8ProjectionSource =
 @property(nonatomic, strong) id<MTLCounterSampleBuffer> prefillLayerAttentionSamples;
 @property(nonatomic, strong) id<MTLCommandBuffer> prefillLayerAttentionCommand;
 @property(nonatomic, strong) NSNumber *prefillLayerAttentionSampleCount;
+@property(nonatomic, strong) RustStarBootstrapScratch *prefillLayerBootstrapScratch;
 @property(nonatomic, strong) NSMutableArray<id<MTLCommandBuffer>> *prefillBoundaryCommands;
 @property(nonatomic, assign) double prefillBoundaryWallStart;
 @property(nonatomic, strong) id<MTLBuffer> prefillLayer0FullKv;
@@ -4541,6 +4554,164 @@ int rust_star_metal_run_prefill_qkv_boundary(
     }
 }
 
+// The caller checks prior GPU completion before any checkout in a tile.
+// Preserve full initial zero/copy state except four exact 1K destinations:
+// their entire range is overwritten by an ordered blit before any content read.
+// Source buffers and every other scratch initializer retain their prior policy.
+static id<MTLBuffer> bootstrap_scratch_buffer(
+    id<MTLDevice> device, RustStarBootstrapScratch *pool,
+    NSString *label, NSUInteger bytes, const void *source,
+    char *error, size_t error_bytes)
+{
+    if (!pool) {
+        return source ? [device newBufferWithBytes:source length:bytes
+            options:MTLResourceStorageModeShared] :
+            [device newBufferWithLength:bytes options:MTLResourceStorageModeShared];
+    }
+    NSArray<NSString *> *allowed = @[
+        @"after_attention_hc_buffer",
+        @"after_ffn_hc_buffer",
+        @"attention_back_buffer",
+        @"attention_block_buffer",
+        @"attention_group_ids_buffer",
+        @"attention_group_map_buffer",
+        @"attention_low_buffer",
+        @"attention_mask_buffer",
+        @"attention_out_buffer",
+        @"attention_output_buffer",
+        @"attention_pad_buffer",
+        @"attn_buffer",
+        @"collapsed_buffer",
+        @"compressed_position_buffer",
+        @"embedding_buffer",
+        @"ffn_cur_buffer",
+        @"ffn_flat_hc_buffer",
+        @"ffn_mix_buffer",
+        @"ffn_norm_buffer",
+        @"ffn_split_buffer",
+        @"flat_hc_buffer",
+        @"full_kv_half_buffer",
+        @"hc_buffer",
+        @"kv_half_buffer",
+        @"kv_norm_buffer",
+        @"kv_norm_snapshot_buffer",
+        @"kv_raw_buffer",
+        @"kv_rope_buffer",
+        @"layer2_attn_packed_kv_buffer",
+        @"layer2_attn_packed_score_buffer",
+        @"layer2_attn_projected_kv_buffer",
+        @"layer2_attn_projected_score_buffer",
+        @"layer2_attn_softmax_buffer",
+        @"layer2_cur_buffer",
+        @"layer2_flat_hc_buffer",
+        @"layer2_indexer_packed_kv_buffer",
+        @"layer2_indexer_packed_score_buffer",
+        @"layer2_indexer_projected_kv_buffer",
+        @"layer2_indexer_projected_score_buffer",
+        @"layer2_indexer_softmax_buffer",
+        @"layer2_kv_norm_buffer",
+        @"layer2_kv_norm_snapshot_buffer",
+        @"layer2_kv_raw_buffer",
+        @"layer2_kv_rope_buffer",
+        @"layer2_mix_buffer",
+        @"layer2_norm_buffer",
+        @"layer2_q_lora_buffer",
+        @"layer2_q_norm_buffer",
+        @"layer2_split_buffer",
+        @"mix_buffer",
+        @"next_after_attention_hc_buffer",
+        @"next_after_ffn_hc_buffer",
+        @"next_attention_back_buffer",
+        @"next_attention_low_buffer",
+        @"next_attention_out_buffer",
+        @"next_attention_output_buffer",
+        @"next_cur_buffer",
+        @"next_ffn_cur_buffer",
+        @"next_ffn_flat_hc_buffer",
+        @"next_ffn_mix_buffer",
+        @"next_ffn_norm_buffer",
+        @"next_ffn_split_buffer",
+        @"next_flat_hc_buffer",
+        @"next_full_kv_half_buffer",
+        @"next_kv_half_buffer",
+        @"next_kv_norm_buffer",
+        @"next_kv_norm_snapshot_buffer",
+        @"next_kv_raw_buffer",
+        @"next_kv_rope_buffer",
+        @"next_mix_buffer",
+        @"next_norm_buffer",
+        @"next_q_cur_buffer",
+        @"next_q_lora_buffer",
+        @"next_q_norm_buffer",
+        @"next_q_raw_buffer",
+        @"next_raw_cache_buffer",
+        @"next_routed_mid_buffer",
+        @"next_routed_out_buffer",
+        @"next_router_logits_buffer",
+        @"next_router_probs_buffer",
+        @"next_router_selected_buffer",
+        @"next_router_weights_buffer",
+        @"next_shared_out_buffer",
+        @"next_split_buffer",
+        @"position_buffer",
+        @"q_buffer",
+        @"q_cur_buffer",
+        @"q_norm_buffer",
+        @"q_raw_buffer",
+        @"raw_cache_buffer",
+        @"routed_experts_buffer",
+        @"routed_map_buffer",
+        @"routed_mid_buffer",
+        @"routed_out_buffer",
+        @"router_logits_buffer",
+        @"router_probs_buffer",
+        @"router_selected_buffer",
+        @"router_weight_sums_buffer",
+        @"router_weights_buffer",
+        @"shared_gate_buffer",
+        @"shared_mid_buffer",
+        @"shared_out_buffer",
+        @"shared_up_buffer",
+        @"split_buffer",
+        @"token_buffer"
+    ];
+    if (![allowed containsObject:label] || [pool.checkedOut containsObject:label] ||
+        bytes == 0u || bytes > 2493173233ull ||
+        (pool.priorCommand && pool.priorCommand.status != MTLCommandBufferStatusCompleted)) {
+        fail_with_message(error, error_bytes, @"invalid bootstrap scratch checkout");
+        return nil;
+    }
+    id<MTLBuffer> buffer = pool.buffers[label];
+    if (buffer) {
+        if (buffer.length != bytes) {
+            fail_with_message(error, error_bytes, @"bootstrap scratch capacity changed within chunk");
+            return nil;
+        }
+    } else {
+        if (pool.buffers.count >= 105u || pool.bytes > 2493173233ull - bytes) {
+            fail_with_message(error, error_bytes, @"bootstrap scratch capacity exceeded");
+            return nil;
+        }
+        buffer = [device newBufferWithLength:bytes options:MTLResourceStorageModeShared];
+        if (!buffer) {
+            fail_with_message(error, error_bytes, @"bootstrap scratch allocation failed");
+            return nil;
+        }
+        pool.buffers[label] = buffer;
+        pool.bytes += bytes;
+    }
+    [pool.checkedOut addObject:label];
+    if (source) memcpy(buffer.contents, source, bytes);
+    else if (!(bytes == 134217728u &&
+        ([label isEqualToString:@"q_cur_buffer"] ||
+         [label isEqualToString:@"attention_back_buffer"] ||
+         [label isEqualToString:@"next_q_cur_buffer"] ||
+         [label isEqualToString:@"next_attention_back_buffer"]))) {
+        memset(buffer.contents, 0, bytes);
+    }
+    return buffer;
+}
+
 int rust_star_metal_run_prefill_layer0_boundary(
     void *opaque_context,
     const void *model_mapping,
@@ -4666,7 +4837,14 @@ int rust_star_metal_run_prefill_layer0_boundary(
         return fail_with_message(error, error_bytes,
             @"prefill complete layer-1 boundary received a null fixture/output pointer");
     }
-    if (n_vocab != 129280u || (rows != 32u && rows != 64u) ||
+    const BOOL native_1k_bootstrap = rows == 1024u && !collect_outputs &&
+        complete_layer1 && continue_layer2_compressors && kv_state_mode == 2u &&
+        position_start > 0u && prefill_rows <= 32768u &&
+        prefill_rows >= 8192u && prefill_rows%4096u == 0u &&
+        position_start >= prefill_rows-4096u && position_start%1024u == 0u &&
+        (uint64_t)position_start + rows <= prefill_rows;
+    if (n_vocab != 129280u ||
+        (rows != 32u && rows != 64u && !native_1k_bootstrap) ||
         (prefill_rows != 2048u && (prefill_rows < 4096u ||
          prefill_rows > 262144u || prefill_rows%4096u != 0u)) ||
         prefill_rows < rows || prefill_rows % rows != 0u ||
@@ -4678,6 +4856,42 @@ int rust_star_metal_run_prefill_layer0_boundary(
 
     @autoreleasepool {
         RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
+        BOOL scratch_success = NO;
+        @try {
+        if (!native_1k_bootstrap && context.prefillLayerBootstrapScratch) {
+            return fail_with_message(error, error_bytes,
+                @"bootstrap scratch chunk was not completed");
+        }
+
+        if (native_1k_bootstrap && (!context.prefillLayerChunkStart ||
+            context.prefillLayerChunkStart.unsignedIntValue != prefill_rows-4096u)) {
+            return fail_with_message(error, error_bytes,
+                @"1K bootstrap requires the active native continuation chunk");
+        }
+        if (native_1k_bootstrap) {
+            if (position_start == prefill_rows - 4096u) {
+                if (context.prefillLayerBootstrapScratch) {
+                    return fail_with_message(error, error_bytes,
+                        @"bootstrap scratch owner already exists");
+                }
+                RustStarBootstrapScratch *created = [RustStarBootstrapScratch new];
+                created.buffers = [NSMutableDictionary new];
+                created.checkedOut = [NSMutableSet new];
+                created.frontier = prefill_rows;
+                created.nextPosition = position_start;
+                context.prefillLayerBootstrapScratch = created;
+            }
+            RustStarBootstrapScratch *owner = context.prefillLayerBootstrapScratch;
+            if (!owner || owner.frontier != prefill_rows ||
+                owner.nextPosition != position_start) {
+                return fail_with_message(error, error_bytes,
+                    @"bootstrap scratch owner is missing or noncontiguous");
+            }
+            if (owner.priorCommand &&
+                !command_succeeded(owner.priorCommand, error, error_bytes)) return 0;
+            [owner.checkedOut removeAllObjects];
+        }
+        RustStarBootstrapScratch *scratch_pool = context.prefillLayerBootstrapScratch;
         const BOOL retain_kv_state = kv_state_mode == 1u;
         const BOOL consume_kv_state = kv_state_mode == 2u;
         const BOOL batch_production_tiles = !collect_outputs &&
@@ -5043,107 +5257,104 @@ int rust_star_metal_run_prefill_layer0_boundary(
 #undef RUST_STAR_GROW_PREFILL_BUFFER
             context.prefillCapacityRows = prefill_rows;
         }
-        id<MTLBuffer> token_buffer = [context.device newBufferWithBytes:tokens
-            length:token_bytes options:MTLResourceStorageModeShared];
-        id<MTLBuffer> embedding_buffer = [context.device newBufferWithLength:embedding_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> hc_buffer = [context.device newBufferWithLength:hc_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> flat_hc_buffer = [context.device newBufferWithLength:hc_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> mix_buffer = [context.device newBufferWithLength:mix_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> split_buffer = [context.device newBufferWithLength:mix_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> collapsed_buffer = [context.device newBufferWithLength:attn_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> attn_buffer = [context.device newBufferWithLength:attn_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> q_buffer = [context.device newBufferWithLength:q_rank_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> q_norm_buffer = [context.device newBufferWithLength:q_rank_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> kv_raw_buffer = [context.device newBufferWithLength:kv_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> kv_norm_buffer = [context.device newBufferWithLength:kv_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> kv_norm_snapshot_buffer = [context.device newBufferWithLength:kv_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> kv_rope_buffer = [context.device newBufferWithLength:kv_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> kv_half_buffer = [context.device newBufferWithLength:rows*kv_dim*sizeof(uint16_t)
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> raw_cache_buffer = [context.device newBufferWithLength:raw_cache_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> q_raw_buffer = [context.device newBufferWithLength:q_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> q_cur_buffer = [context.device newBufferWithLength:q_bytes
-            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> token_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"token_buffer", (token_bytes), tokens, error, error_bytes);
+        id<MTLBuffer> embedding_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"embedding_buffer", (embedding_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> hc_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"hc_buffer", (hc_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> flat_hc_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"flat_hc_buffer", (hc_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> mix_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"mix_buffer", (mix_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> split_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"split_buffer", (mix_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> collapsed_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"collapsed_buffer", (attn_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> attn_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"attn_buffer", (attn_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> q_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"q_buffer", (q_rank_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> q_norm_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"q_norm_buffer", (q_rank_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> kv_raw_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"kv_raw_buffer", (kv_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> kv_norm_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"kv_norm_buffer", (kv_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> kv_norm_snapshot_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"kv_norm_snapshot_buffer", (kv_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> kv_rope_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"kv_rope_buffer", (kv_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> kv_half_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"kv_half_buffer", (rows*kv_dim*sizeof(uint16_t)), NULL, error, error_bytes);
+        id<MTLBuffer> raw_cache_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"raw_cache_buffer", (raw_cache_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> q_raw_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"q_raw_buffer", (q_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> q_cur_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"q_cur_buffer", (q_bytes), NULL, error, error_bytes);
         id<MTLBuffer> full_kv_buffer = consume_kv_state ?
             context.prefillLayer0FullKv :
             [context.device newBufferWithLength:full_kv_bytes
                 options:MTLResourceStorageModeShared];
-        id<MTLBuffer> full_kv_half_buffer = [context.device
-            newBufferWithLength:prefill_rows*kv_dim*sizeof(uint16_t)
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> attention_mask_buffer = [context.device
-            newBufferWithLength:attention_mask_bytes options:MTLResourceStorageModeShared];
-        id<MTLBuffer> attention_block_buffer = [context.device
-            newBufferWithLength:attention_block_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> attention_pad_buffer = [context.device newBufferWithLength:1u
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> attention_output_buffer = [context.device newBufferWithLength:q_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> attention_back_buffer = [context.device newBufferWithLength:q_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> attention_low_buffer = [context.device newBufferWithLength:attention_low_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> attention_out_buffer = [context.device newBufferWithLength:attention_out_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> after_attention_hc_buffer = [context.device newBufferWithLength:hc_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> attention_group_ids_buffer = [context.device
-            newBufferWithLength:rows*8u*sizeof(int32_t) options:MTLResourceStorageModeShared];
-        id<MTLBuffer> attention_group_map_buffer = [context.device
-            newBufferWithLength:attention_map_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> ffn_flat_hc_buffer = [context.device newBufferWithLength:hc_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> ffn_mix_buffer = [context.device newBufferWithLength:mix_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> ffn_split_buffer = [context.device newBufferWithLength:mix_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> ffn_cur_buffer = [context.device newBufferWithLength:attn_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> ffn_norm_buffer = [context.device newBufferWithLength:attn_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> router_logits_buffer = [context.device newBufferWithLength:router_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> router_probs_buffer = [context.device newBufferWithLength:router_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> router_selected_buffer = [context.device newBufferWithLength:selected_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> router_weights_buffer = [context.device newBufferWithLength:selected_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> router_weight_sums_buffer = [context.device newBufferWithLength:rows*sizeof(float)
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> routed_mid_buffer = [context.device newBufferWithLength:routed_mid_f16_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> routed_experts_buffer = [context.device newBufferWithLength:routed_experts_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> routed_out_buffer = [context.device newBufferWithLength:attn_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> shared_gate_buffer = [context.device newBufferWithLength:ffn_mid_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> shared_up_buffer = [context.device newBufferWithLength:ffn_mid_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> shared_mid_buffer = [context.device newBufferWithLength:ffn_mid_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> shared_out_buffer = [context.device newBufferWithLength:attn_bytes
-            options:MTLResourceStorageModeShared];
-        id<MTLBuffer> after_ffn_hc_buffer = [context.device newBufferWithLength:hc_bytes
-            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> full_kv_half_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"full_kv_half_buffer", (prefill_rows*kv_dim*sizeof(uint16_t)), NULL, error, error_bytes);
+        id<MTLBuffer> attention_mask_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"attention_mask_buffer", (attention_mask_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> attention_block_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"attention_block_buffer", (attention_block_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> attention_pad_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"attention_pad_buffer", (1u), NULL, error, error_bytes);
+        id<MTLBuffer> attention_output_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"attention_output_buffer", (q_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> attention_back_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"attention_back_buffer", (q_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> attention_low_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"attention_low_buffer", (attention_low_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> attention_out_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"attention_out_buffer", (attention_out_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> after_attention_hc_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"after_attention_hc_buffer", (hc_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> attention_group_ids_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"attention_group_ids_buffer", (rows*8u*sizeof(int32_t)), NULL, error, error_bytes);
+        id<MTLBuffer> attention_group_map_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"attention_group_map_buffer", (attention_map_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> ffn_flat_hc_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"ffn_flat_hc_buffer", (hc_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> ffn_mix_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"ffn_mix_buffer", (mix_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> ffn_split_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"ffn_split_buffer", (mix_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> ffn_cur_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"ffn_cur_buffer", (attn_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> ffn_norm_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"ffn_norm_buffer", (attn_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> router_logits_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"router_logits_buffer", (router_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> router_probs_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"router_probs_buffer", (router_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> router_selected_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"router_selected_buffer", (selected_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> router_weights_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"router_weights_buffer", (selected_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> router_weight_sums_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"router_weight_sums_buffer", (rows*sizeof(float)), NULL, error, error_bytes);
+        id<MTLBuffer> routed_mid_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"routed_mid_buffer", (routed_mid_f16_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> routed_experts_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"routed_experts_buffer", (routed_experts_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> routed_out_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"routed_out_buffer", (attn_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> shared_gate_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"shared_gate_buffer", (ffn_mid_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> shared_up_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"shared_up_buffer", (ffn_mid_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> shared_mid_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"shared_mid_buffer", (ffn_mid_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> shared_out_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"shared_out_buffer", (attn_bytes), NULL, error, error_bytes);
+        id<MTLBuffer> after_ffn_hc_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"after_ffn_hc_buffer", (hc_bytes), NULL, error, error_bytes);
         id<MTLBuffer> transition_diagnostics_buffer = position_start == 4096u ?
             [context.device newBufferWithLength:prefill_transition_diagnostics_bytes
                 options:MTLResourceStorageModeShared] : nil;
@@ -5217,32 +5428,41 @@ int rust_star_metal_run_prefill_layer0_boundary(
         id<MTLBuffer> layer2_indexer_state_kv_buffer = nil;
         id<MTLBuffer> layer2_indexer_state_score_buffer = nil;
         if (continue_layer1) {
-            next_flat_hc_buffer = [context.device newBufferWithLength:hc_bytes
-                options:MTLResourceStorageModeShared];
-            next_mix_buffer = [context.device newBufferWithLength:mix_bytes
-                options:MTLResourceStorageModeShared];
-            next_split_buffer = [context.device newBufferWithLength:mix_bytes
-                options:MTLResourceStorageModeShared];
-            next_cur_buffer = [context.device newBufferWithLength:attn_bytes
-                options:MTLResourceStorageModeShared];
-            next_norm_buffer = [context.device newBufferWithLength:attn_bytes
-                options:MTLResourceStorageModeShared];
-            next_q_lora_buffer = [context.device newBufferWithLength:q_rank_bytes
-                options:MTLResourceStorageModeShared];
+            next_flat_hc_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"next_flat_hc_buffer", (hc_bytes), NULL, error, error_bytes);
+            next_mix_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"next_mix_buffer", (mix_bytes), NULL, error, error_bytes);
+            next_split_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"next_split_buffer", (mix_bytes), NULL, error, error_bytes);
+            next_cur_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"next_cur_buffer", (attn_bytes), NULL, error, error_bytes);
+            next_norm_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"next_norm_buffer", (attn_bytes), NULL, error, error_bytes);
+            next_q_lora_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"next_q_lora_buffer", (q_rank_bytes), NULL, error, error_bytes);
         }
         if (complete_layer1) {
 #define RUST_STAR_NEW_L1_BUFFER(name, bytes) \
             name = [context.device newBufferWithLength:(bytes) \
                 options:MTLResourceStorageModeShared]
-            RUST_STAR_NEW_L1_BUFFER(next_q_norm_buffer, q_rank_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_kv_raw_buffer, kv_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_kv_norm_buffer, kv_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_kv_norm_snapshot_buffer, kv_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_kv_rope_buffer, kv_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_kv_half_buffer, rows*kv_dim*sizeof(uint16_t));
-            RUST_STAR_NEW_L1_BUFFER(next_raw_cache_buffer, raw_cache_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_q_raw_buffer, q_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_q_cur_buffer, q_bytes);
+            next_q_norm_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_q_norm_buffer", (q_rank_bytes), NULL, error, error_bytes);
+            next_kv_raw_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_kv_raw_buffer", (kv_bytes), NULL, error, error_bytes);
+            next_kv_norm_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_kv_norm_buffer", (kv_bytes), NULL, error, error_bytes);
+            next_kv_norm_snapshot_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_kv_norm_snapshot_buffer", (kv_bytes), NULL, error, error_bytes);
+            next_kv_rope_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_kv_rope_buffer", (kv_bytes), NULL, error, error_bytes);
+            next_kv_half_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_kv_half_buffer", (rows*kv_dim*sizeof(uint16_t)), NULL, error, error_bytes);
+            next_raw_cache_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_raw_cache_buffer", (raw_cache_bytes), NULL, error, error_bytes);
+            next_q_raw_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_q_raw_buffer", (q_bytes), NULL, error, error_bytes);
+            next_q_cur_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_q_cur_buffer", (q_bytes), NULL, error, error_bytes);
             if (consume_kv_state) {
                 next_full_kv_buffer = context.prefillLayer1FullKv;
                 layer1_input_hc_buffer = context.prefillLayer1InputHc;
@@ -5251,44 +5471,73 @@ int rust_star_metal_run_prefill_layer0_boundary(
                 RUST_STAR_NEW_L1_BUFFER(layer1_input_hc_buffer,
                     bootstrap_rows*hc_dim*sizeof(float));
             }
-            RUST_STAR_NEW_L1_BUFFER(next_full_kv_half_buffer,
-                prefill_rows*kv_dim*sizeof(uint16_t));
-            RUST_STAR_NEW_L1_BUFFER(next_attention_output_buffer, q_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_attention_back_buffer, q_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_attention_low_buffer, attention_low_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_attention_out_buffer, attention_out_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_after_attention_hc_buffer, hc_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_ffn_flat_hc_buffer, hc_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_ffn_mix_buffer, mix_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_ffn_split_buffer, mix_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_ffn_cur_buffer, attn_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_ffn_norm_buffer, attn_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_router_logits_buffer, router_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_router_probs_buffer, router_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_router_selected_buffer, selected_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_router_weights_buffer, selected_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_routed_mid_buffer, routed_mid_f16_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_routed_out_buffer, attn_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_shared_out_buffer, attn_bytes);
-            RUST_STAR_NEW_L1_BUFFER(next_after_ffn_hc_buffer, hc_bytes);
+            next_full_kv_half_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_full_kv_half_buffer", (prefill_rows*kv_dim*sizeof(uint16_t)), NULL, error, error_bytes);
+            next_attention_output_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_attention_output_buffer", (q_bytes), NULL, error, error_bytes);
+            next_attention_back_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_attention_back_buffer", (q_bytes), NULL, error, error_bytes);
+            next_attention_low_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_attention_low_buffer", (attention_low_bytes), NULL, error, error_bytes);
+            next_attention_out_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_attention_out_buffer", (attention_out_bytes), NULL, error, error_bytes);
+            next_after_attention_hc_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_after_attention_hc_buffer", (hc_bytes), NULL, error, error_bytes);
+            next_ffn_flat_hc_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_ffn_flat_hc_buffer", (hc_bytes), NULL, error, error_bytes);
+            next_ffn_mix_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_ffn_mix_buffer", (mix_bytes), NULL, error, error_bytes);
+            next_ffn_split_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_ffn_split_buffer", (mix_bytes), NULL, error, error_bytes);
+            next_ffn_cur_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_ffn_cur_buffer", (attn_bytes), NULL, error, error_bytes);
+            next_ffn_norm_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_ffn_norm_buffer", (attn_bytes), NULL, error, error_bytes);
+            next_router_logits_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_router_logits_buffer", (router_bytes), NULL, error, error_bytes);
+            next_router_probs_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_router_probs_buffer", (router_bytes), NULL, error, error_bytes);
+            next_router_selected_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_router_selected_buffer", (selected_bytes), NULL, error, error_bytes);
+            next_router_weights_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_router_weights_buffer", (selected_bytes), NULL, error, error_bytes);
+            next_routed_mid_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_routed_mid_buffer", (routed_mid_f16_bytes), NULL, error, error_bytes);
+            next_routed_out_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_routed_out_buffer", (attn_bytes), NULL, error, error_bytes);
+            next_shared_out_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_shared_out_buffer", (attn_bytes), NULL, error, error_bytes);
+            next_after_ffn_hc_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"next_after_ffn_hc_buffer", (hc_bytes), NULL, error, error_bytes);
 #undef RUST_STAR_NEW_L1_BUFFER
         }
         if (continue_layer2) {
 #define RUST_STAR_NEW_L2_BUFFER(name, bytes) \
             name = [context.device newBufferWithLength:(bytes) \
                 options:MTLResourceStorageModeShared]
-            RUST_STAR_NEW_L2_BUFFER(layer2_flat_hc_buffer, hc_bytes);
-            RUST_STAR_NEW_L2_BUFFER(layer2_mix_buffer, mix_bytes);
-            RUST_STAR_NEW_L2_BUFFER(layer2_split_buffer, mix_bytes);
-            RUST_STAR_NEW_L2_BUFFER(layer2_cur_buffer, attn_bytes);
-            RUST_STAR_NEW_L2_BUFFER(layer2_norm_buffer, attn_bytes);
-            RUST_STAR_NEW_L2_BUFFER(layer2_q_lora_buffer, q_rank_bytes);
-            RUST_STAR_NEW_L2_BUFFER(layer2_q_norm_buffer, q_rank_bytes);
-            RUST_STAR_NEW_L2_BUFFER(layer2_kv_raw_buffer, kv_bytes);
-            RUST_STAR_NEW_L2_BUFFER(layer2_kv_norm_buffer, kv_bytes);
+            layer2_flat_hc_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"layer2_flat_hc_buffer", (hc_bytes), NULL, error, error_bytes);
+            layer2_mix_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"layer2_mix_buffer", (mix_bytes), NULL, error, error_bytes);
+            layer2_split_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"layer2_split_buffer", (mix_bytes), NULL, error, error_bytes);
+            layer2_cur_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"layer2_cur_buffer", (attn_bytes), NULL, error, error_bytes);
+            layer2_norm_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"layer2_norm_buffer", (attn_bytes), NULL, error, error_bytes);
+            layer2_q_lora_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"layer2_q_lora_buffer", (q_rank_bytes), NULL, error, error_bytes);
+            layer2_q_norm_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"layer2_q_norm_buffer", (q_rank_bytes), NULL, error, error_bytes);
+            layer2_kv_raw_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"layer2_kv_raw_buffer", (kv_bytes), NULL, error, error_bytes);
+            layer2_kv_norm_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"layer2_kv_norm_buffer", (kv_bytes), NULL, error, error_bytes);
             if (continue_layer2_kv_state) {
-                RUST_STAR_NEW_L2_BUFFER(layer2_kv_norm_snapshot_buffer, kv_bytes);
-                RUST_STAR_NEW_L2_BUFFER(layer2_kv_rope_buffer, kv_bytes);
+                layer2_kv_norm_snapshot_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"layer2_kv_norm_snapshot_buffer", (kv_bytes), NULL, error, error_bytes);
+                layer2_kv_rope_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"layer2_kv_rope_buffer", (kv_bytes), NULL, error, error_bytes);
                 if (consume_kv_state) {
                     layer2_full_kv_buffer = context.prefillLayer2FullKv;
                     layer2_full_q_norm_buffer = context.prefillLayer2FullQNorm;
@@ -5311,26 +5560,26 @@ int rust_star_metal_run_prefill_layer0_boundary(
                 }
             }
             if (continue_layer2_compressors) {
-                RUST_STAR_NEW_L2_BUFFER(layer2_attn_projected_kv_buffer,
-                    attn_projected_bytes);
-                RUST_STAR_NEW_L2_BUFFER(layer2_attn_projected_score_buffer,
-                    attn_projected_bytes);
-                RUST_STAR_NEW_L2_BUFFER(layer2_indexer_projected_kv_buffer,
-                    indexer_projected_bytes);
-                RUST_STAR_NEW_L2_BUFFER(layer2_indexer_projected_score_buffer,
-                    indexer_projected_bytes);
-                RUST_STAR_NEW_L2_BUFFER(layer2_attn_packed_kv_buffer,
-                    attn_projected_bytes);
-                RUST_STAR_NEW_L2_BUFFER(layer2_attn_packed_score_buffer,
-                    attn_projected_bytes);
-                RUST_STAR_NEW_L2_BUFFER(layer2_attn_softmax_buffer,
-                    attn_projected_bytes);
-                RUST_STAR_NEW_L2_BUFFER(layer2_indexer_packed_kv_buffer,
-                    indexer_projected_bytes);
-                RUST_STAR_NEW_L2_BUFFER(layer2_indexer_packed_score_buffer,
-                    indexer_projected_bytes);
-                RUST_STAR_NEW_L2_BUFFER(layer2_indexer_softmax_buffer,
-                    indexer_projected_bytes);
+                layer2_attn_projected_kv_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"layer2_attn_projected_kv_buffer", (attn_projected_bytes), NULL, error, error_bytes);
+                layer2_attn_projected_score_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"layer2_attn_projected_score_buffer", (attn_projected_bytes), NULL, error, error_bytes);
+                layer2_indexer_projected_kv_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"layer2_indexer_projected_kv_buffer", (indexer_projected_bytes), NULL, error, error_bytes);
+                layer2_indexer_projected_score_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"layer2_indexer_projected_score_buffer", (indexer_projected_bytes), NULL, error, error_bytes);
+                layer2_attn_packed_kv_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"layer2_attn_packed_kv_buffer", (attn_projected_bytes), NULL, error, error_bytes);
+                layer2_attn_packed_score_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"layer2_attn_packed_score_buffer", (attn_projected_bytes), NULL, error, error_bytes);
+                layer2_attn_softmax_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"layer2_attn_softmax_buffer", (attn_projected_bytes), NULL, error, error_bytes);
+                layer2_indexer_packed_kv_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"layer2_indexer_packed_kv_buffer", (indexer_projected_bytes), NULL, error, error_bytes);
+                layer2_indexer_packed_score_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"layer2_indexer_packed_score_buffer", (indexer_projected_bytes), NULL, error, error_bytes);
+                layer2_indexer_softmax_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"layer2_indexer_softmax_buffer", (indexer_projected_bytes), NULL, error, error_bytes);
                 if (consume_kv_state) {
                     layer2_attn_compressed_buffer =
                         context.prefillLayer2AttnCompressed;
@@ -5366,9 +5615,8 @@ int rust_star_metal_run_prefill_layer0_boundary(
             (routed_map_tpe_bytes+routed_map_ids_bytes+7u)&~7u;
         const NSUInteger routed_map_work_cap =
             (rows*n_used+31u*n_expert+31u)/32u;
-        id<MTLBuffer> routed_map_buffer = [context.device
-            newBufferWithLength:routed_map_work_offset+8u+routed_map_work_cap*8u
-            options:MTLResourceStorageModeShared];
+        id<MTLBuffer> routed_map_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"routed_map_buffer", (routed_map_work_offset+8u+routed_map_work_cap*8u), NULL, error, error_bytes);
         if (!token_buffer || !embedding_buffer || !hc_buffer || !flat_hc_buffer ||
             !mix_buffer || !split_buffer || !collapsed_buffer || !attn_buffer ||
             !q_buffer || !q_norm_buffer || !kv_raw_buffer || !kv_norm_buffer ||
@@ -5689,21 +5937,26 @@ int rust_star_metal_run_prefill_layer0_boundary(
         layer2_kv_rope_args.ext_factor = 1.0f;
         layer2_kv_rope_args.attn_factor =
             1.0f/(1.0f + 0.1f*logf(1.0f/layer2_freq_scale));
-        int32_t positions[64];
+        int32_t positions[1024];
         for (uint32_t row = 0; row < rows; row++) {
             positions[row] = (int32_t)(position_start + row);
         }
-        id<MTLBuffer> position_buffer = [context.device newBufferWithBytes:positions
-            length:rows*sizeof(int32_t) options:MTLResourceStorageModeShared];
-        int32_t compressed_positions[16];
+        id<MTLBuffer> position_buffer = bootstrap_scratch_buffer(context.device, scratch_pool,
+            @"position_buffer", (rows*sizeof(int32_t)), positions, error, error_bytes);
+        int32_t compressed_positions[256];
         for (uint32_t row = 0; row < compressor_tile_rows; row++) {
             compressed_positions[row] =
                 (int32_t)(position_start + row*compressor_ratio);
         }
         id<MTLBuffer> compressed_position_buffer = continue_layer2_compressors ?
-            [context.device newBufferWithBytes:compressed_positions
-                length:compressor_tile_rows*sizeof(int32_t)
-                options:MTLResourceStorageModeShared] : nil;
+            bootstrap_scratch_buffer(context.device, scratch_pool,
+                @"compressed_position_buffer", compressor_tile_rows*sizeof(int32_t),
+                compressed_positions, error, error_bytes) : nil;
+        if (scratch_pool && (scratch_pool.checkedOut.count != 105u ||
+            scratch_pool.buffers.count != 105u)) {
+            return fail_with_message(error, error_bytes,
+                @"bootstrap scratch checkout set is incomplete");
+        }
         rust_star_fp8_quantize_args kv_fp8_args = {
             .ne00=kv_dim, .ne01=1, .ne02=rows, .ne03=1,
             .nb00=sizeof(float), .nb01=kv_dim*sizeof(float),
@@ -6022,12 +6275,19 @@ int rust_star_metal_run_prefill_layer0_boundary(
         [encoder setBuffer:kv_half_buffer offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(conversion_groups,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+        // A 1K batch leaves exactly its final 128 rows in the raw ring.
+        const uint32_t raw_copy_rows = MIN(rows, (uint32_t)raw_cache_rows);
+        const uint32_t raw_copy_elements = raw_copy_rows*kv_dim;
+        const NSUInteger raw_source_row = rows-raw_copy_rows;
+        const NSUInteger raw_target_row =
+            (position_start+raw_source_row)%raw_cache_rows;
         [encoder setComputePipelineState:context.cpyF16F32Pipeline];
-        [encoder setBytes:&kv_elements length:sizeof(kv_elements) atIndex:0];
-        [encoder setBuffer:kv_half_buffer offset:0 atIndex:1];
+        [encoder setBytes:&raw_copy_elements length:sizeof(raw_copy_elements) atIndex:0];
+        [encoder setBuffer:kv_half_buffer
+                     offset:raw_source_row*kv_dim*sizeof(uint16_t) atIndex:1];
         [encoder setBuffer:raw_cache_buffer
-                     offset:raw_cache_target_row*kv_dim*sizeof(float) atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake(conversion_groups,1,1)
+                     offset:raw_target_row*kv_dim*sizeof(float) atIndex:2];
+        [encoder dispatchThreadgroups:MTLSizeMake((raw_copy_elements+1023u)/1024u,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder endEncoding];
 
@@ -6201,7 +6461,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         [encoder setBuffer:token_buffer offset:0 atIndex:1];
         [encoder setBuffer:router_selected_buffer offset:0 atIndex:2];
         [encoder dispatchThreads:MTLSizeMake(rows,1,1)
-             threadsPerThreadgroup:MTLSizeMake(rows,1,1)];
+             threadsPerThreadgroup:MTLSizeMake(MIN(rows,256u),1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:router_selected_buffer offset:0 atIndex:1];
@@ -6220,7 +6480,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:0];
         [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:1];
         [encoder dispatchThreads:MTLSizeMake(rows,1,1)
-             threadsPerThreadgroup:MTLSizeMake(rows,1,1)];
+             threadsPerThreadgroup:MTLSizeMake(MIN(rows,256u),1,1)];
         [encoder setComputePipelineState:context.routerDivideBatchPipeline];
         [encoder setBuffer:router_weights_buffer offset:0 atIndex:0];
         [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:1];
@@ -6437,12 +6697,19 @@ int rust_star_metal_run_prefill_layer0_boundary(
             [encoder setBuffer:next_kv_half_buffer offset:0 atIndex:2];
             [encoder dispatchThreadgroups:MTLSizeMake(conversion_groups,1,1)
                  threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+            // A 1K batch leaves exactly its final 128 rows in the raw ring.
+            const uint32_t raw_copy_rows = MIN(rows, (uint32_t)raw_cache_rows);
+            const uint32_t raw_copy_elements = raw_copy_rows*kv_dim;
+            const NSUInteger raw_source_row = rows-raw_copy_rows;
+            const NSUInteger raw_target_row =
+                (position_start+raw_source_row)%raw_cache_rows;
             [encoder setComputePipelineState:context.cpyF16F32Pipeline];
-            [encoder setBytes:&kv_elements length:sizeof(kv_elements) atIndex:0];
-            [encoder setBuffer:next_kv_half_buffer offset:0 atIndex:1];
+            [encoder setBytes:&raw_copy_elements length:sizeof(raw_copy_elements) atIndex:0];
+            [encoder setBuffer:next_kv_half_buffer
+                         offset:raw_source_row*kv_dim*sizeof(uint16_t) atIndex:1];
             [encoder setBuffer:next_raw_cache_buffer
-                         offset:raw_cache_target_row*kv_dim*sizeof(float) atIndex:2];
-            [encoder dispatchThreadgroups:MTLSizeMake(conversion_groups,1,1)
+                         offset:raw_target_row*kv_dim*sizeof(float) atIndex:2];
+            [encoder dispatchThreadgroups:MTLSizeMake((raw_copy_elements+1023u)/1024u,1,1)
                  threadsPerThreadgroup:MTLSizeMake(256,1,1)];
             [encoder endEncoding];
 
@@ -6616,7 +6883,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
             [encoder setBuffer:token_buffer offset:0 atIndex:1];
             [encoder setBuffer:next_router_selected_buffer offset:0 atIndex:2];
             [encoder dispatchThreads:MTLSizeMake(rows,1,1)
-                 threadsPerThreadgroup:MTLSizeMake(rows,1,1)];
+                 threadsPerThreadgroup:MTLSizeMake(MIN(rows,256u),1,1)];
             [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
             [encoder setBuffer:next_router_probs_buffer offset:0 atIndex:0];
             [encoder setBuffer:next_router_selected_buffer offset:0 atIndex:1];
@@ -6635,7 +6902,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
             [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:0];
             [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:1];
             [encoder dispatchThreads:MTLSizeMake(rows,1,1)
-                 threadsPerThreadgroup:MTLSizeMake(rows,1,1)];
+                 threadsPerThreadgroup:MTLSizeMake(MIN(rows,256u),1,1)];
             [encoder setComputePipelineState:context.routerDivideBatchPipeline];
             [encoder setBuffer:next_router_weights_buffer offset:0 atIndex:0];
             [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:1];
@@ -7016,6 +7283,12 @@ int rust_star_metal_run_prefill_layer0_boundary(
         double reported_gpu_ms = 0.0;
         if (batch_production_tiles) {
             [context.prefillBoundaryCommands addObject:command];
+            if (scratch_pool) scratch_pool.priorCommand = command;
+            // Drain this tile before another call allocates or initializes scratch.
+            // The final tile already waits below; keep its complete batch audit.
+            if (native_1k_bootstrap && position_start + rows < prefill_rows) {
+                if (!command_succeeded(command, error, error_bytes)) return 0;
+            }
             if (position_start + rows == prefill_rows) {
                 if (!command_succeeded(command, error, error_bytes)) return 0;
                 for (id<MTLCommandBuffer> pending in context.prefillBoundaryCommands) {
@@ -7213,7 +7486,14 @@ int rust_star_metal_run_prefill_layer0_boundary(
         result->kv_state_mode = kv_state_mode;
         result->wall_ms = reported_wall_ms;
         result->gpu_ms = reported_gpu_ms;
+        if (scratch_pool) scratch_pool.nextPosition = position_start + rows;
+        scratch_success = YES;
         return 1;
+        } @finally {
+            if (!scratch_success || position_start + rows == prefill_rows) {
+                context.prefillLayerBootstrapScratch = nil;
+            }
+        }
     }
 }
 

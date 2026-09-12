@@ -1,0 +1,14 @@
+{
+  "schema": "rust-star-long-prefill-chunk-probe-v1",
+  "frontier_tokens": 32768,
+  "internal_hc_collection": false,
+  "chunks": [],
+  "checked_decode_steps": 128,
+  "decode_logits_checksum": 1716816788919264169,
+  "decode_tokens_checksum": 11977321378026793466,
+  "checked_logits": 129280,
+  "logits_checksum": 2996662110144943749,
+  "selected_token": 85166,
+  "complete_32k_c0_claim": true,
+  "throughput_claim": false
+}

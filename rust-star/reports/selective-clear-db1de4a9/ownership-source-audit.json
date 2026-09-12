@@ -1,0 +1,26 @@
+{
+  "passed": true,
+  "prior_candidate_sha256": "a41d4f3cfd9323ae8ed8702c3c10ef8ba700ba9aa3c3ab51eaa391541d98cf59",
+  "candidate_sha256": "9b7fcf7a4d04a6a85ba1c7c5a5fe460ea263a8f2e3c00bda82fc79653cc7ed29",
+  "new_changes": [
+    {
+      "before": "// newBufferWithLength returns zeroed storage. Reuse restores that entire\n// initial range before the caller performs its existing CPU initialization.\n// The caller checks prior GPU completion once, before any checkout in a tile.",
+      "after": "// The caller checks prior GPU completion before any checkout in a tile.\n// Preserve full initial zero/copy state except four exact 1K destinations:\n// their entire range is overwritten by an ordered blit before any content read.\n// Source buffers and every other scratch initializer retain their prior policy."
+    },
+    {
+      "before": "    else memset(buffer.contents, 0, bytes);",
+      "after": "    else if (!(bytes == 134217728u &&\n        ([label isEqualToString:@\"q_cur_buffer\"] ||\n         [label isEqualToString:@\"attention_back_buffer\"] ||\n         [label isEqualToString:@\"next_q_cur_buffer\"] ||\n         [label isEqualToString:@\"next_attention_back_buffer\"]))) {\n        memset(buffer.contents, 0, bytes);\n    }"
+    }
+  ],
+  "all_other_code_exact": true,
+  "prior_completion_and_ownership_unchanged": true,
+  "selected_labels": [
+    "attention_back_buffer",
+    "next_attention_back_buffer",
+    "next_q_cur_buffer",
+    "q_cur_buffer"
+  ],
+  "selected_bytes": 536870912,
+  "other_initializations_unchanged": 101,
+  "actual_helper_extracted": true
+}

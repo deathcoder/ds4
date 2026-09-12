@@ -1,0 +1,2 @@
+HEADER {"args_bytes":24,"device":"Apple M1 Ultra","mode":"proof","page_size":16384}
+RESULT {"cases":24,"checked_bytes":2147549248,"guard_bytes":24576,"missing_mutation_negative_controls":12,"passed":true,"shortened_copy_negative_controls":12}

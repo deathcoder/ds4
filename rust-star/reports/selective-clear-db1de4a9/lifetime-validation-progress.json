@@ -1,0 +1,11 @@
+[
+  {
+    "name": "candidate-lifetime",
+    "exit_code": 0,
+    "started_utc": "2026-09-12T16:57:03.991066+00:00",
+    "finished_utc": "2026-09-12T17:01:07.800367+00:00",
+    "elapsed_seconds": 243.808722542,
+    "executable_sha256": "306456349e264c0634060c5bf7eb4980beee542f9b751f99aaea48f243a19063",
+    "peak_rss_bytes": 4943052800
+  }
+]

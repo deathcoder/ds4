@@ -1,0 +1,1 @@
+Repeated observer anchors are scoped to the boundary function.

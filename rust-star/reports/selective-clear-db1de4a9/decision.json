@@ -1,0 +1,8 @@
+{
+  "closed": true,
+  "utc": "2026-09-12T17:56:35.581072+00:00",
+  "retained": true,
+  "reason": "Every unchanged engine and memory gate passes.",
+  "failed_gates": [],
+  "engine_runs": 12
+}

@@ -1,0 +1,34 @@
+{
+  "baseline-rust-star": {
+    "sha256": "d8c3919ed98281b36d1f9446c243d94655f416ebaa1a144778c5893ffaea161e",
+    "bytes": 1426900248
+  },
+  "candidate-rust-star": {
+    "sha256": "7590af7ade11d5b07d65f0fefc9e01c02668318896fc4e955307888d85cdaa35",
+    "bytes": 1426936264
+  },
+  "diagnostic-rust-star": {
+    "sha256": "306456349e264c0634060c5bf7eb4980beee542f9b751f99aaea48f243a19063",
+    "bytes": 1426956024
+  },
+  "mutation-proof": {
+    "sha256": "9a42f92b0e0f1d4a98c0f9d0f7e820495f8bf3d8d3eb89e3f4c1b1a8d50eee22",
+    "bytes": 56048
+  },
+  "observer-proof": {
+    "sha256": "6bfd5bda3a8a8e03b45e1ef93f189f3992b23a7fdda26a610e6b015b92a1029e",
+    "bytes": 55776
+  },
+  "pool-proof": {
+    "sha256": "5787765fbb20aea26275ccdc3222181b5842dedc88823c304dfebd6a83835cdc",
+    "bytes": 74472
+  },
+  "prior-default-rust-star": {
+    "sha256": "2bf77edb9886f4efa5d011cba963aaef7e2bf140db1b3a09c6193e76bdc77af4",
+    "bytes": 1427014368
+  },
+  "router-probe": {
+    "sha256": "6835a9cf522c16504800253ef94220711dd9513517f8dc3c532230effe7a1466",
+    "bytes": 52128
+  }
+}

@@ -18,6 +18,113 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-12 — Complete selective scratch initialization: retained
+
+- New guarded copy-then-in-place-mutation proof passes: 24 cases,
+  2,147,549,248 payload bytes, 24,576 guard bytes and all 24 shortened-copy or
+  omitted-mutation negative controls. It ran before runtime edits; the prior
+  incomplete diagnostic verdict remains unchanged.
+- Four exact full-copy destinations omit CPU clearing; all other 101
+  initializers, source memcpy and prior checked completion stay unchanged.
+  Actual helper proof passes 1 GiB of selected-policy checks, 62,043,240 other
+  bytes, 192,360 guards, 2,205 identity reuses and 84 invalid checkouts.
+  Source/observer inverses, 320 Rust tests, optimized production/observer builds,
+  formatting, ring/router/weak-owner checks pass. One preparation-anchor
+  assertion and correction before builds are preserved; no inference repeat.
+- Fresh 12K internal and normal/profiled/observed 32K full C0 pass
+  50,031,360 exact FP32 comparisons; all 4,466 profile intervals pass. Pool audit
+  covers 28 tiles, 119 snapshots and 2,940 checkouts: 112 selected clear
+  omissions, 536,870,912 omitted bytes per tile, stable distinct identities,
+  exact capacities, checked completion and final owner cleanup. All 12 engine
+  processes complete in the fixed order with no exclusions beyond two planned
+  warmups. Paired medians: prefill -11.054%, steady decode +1.362%,
+  RSS +1.819%, footprint +3.728%.
+  Decision: RETAINED. Every unchanged engine and memory gate passes.
+  Candidate production source and executable are retained locally. Final
+  42-source and executable hashes pass. One pair has RSS +3.387%; it remains
+  included, and the prospectively specified median gate passes.
+- Verified portable report: rust-star/reports/selective-clear-db1de4a9/README.md
+  (223 artifacts). Full audit details, every failed attempt and all raw results
+  are preserved. No publication, remote workflow or 256K work.
+- Portable verification passes on its first run and rejects corrupted prior
+  completion and clear-omission records. Whitespace review preserves four exact
+  raw artifacts: host-tests.log, implementation.patch, pool-helper.inc and
+  prior-pool-helper.inc. Their original EOF/context whitespace stays hashed;
+  all other staged paths pass.
+- Next milestone, NOT STARTED: Refresh the direct 32K comparison between the newly
+  accepted Rust runtime and pinned DwarfStar on the same model, prompt and
+  128-token decode workload. Use fresh paired processes and the existing strict
+  measurement adapters to quantify the remaining performance gap, then choose the
+  next bottleneck from the current profile. Keep larger-frontier work and
+  publication deferred. This proposal has not started.
+  Finish local commit and user update, then STOP.
+
+## 2026-09-12 — Selective-clear first engine pair: RSS concern
+
+- Both warmups and the first timed pair pass exact transcripts. Pair 1:
+  prefill -14.778%, steady decode +0.102%, RSS +3.387%, footprint +7.391%.
+  The RSS ratio exceeds the 1.02 median gate for this pair; the final decision
+  still requires all five fixed pairs. Pair 2 runs in reverse order now.
+- Preserve the lower first-pair baseline RSS (88,656,248,832 bytes) and candidate
+  RSS (91,659,141,120 bytes). Warmup baseline/candidate differ too; no warmup
+  substitution, exclusion, rerun or threshold change is allowed. Synthetic
+  savings do not establish the engine memory outcome. Continue the fixed block.
+
+## 2026-09-12 — Selective initialization full C0/pool pass; engine block starts
+
+- All three fresh 32K/128 full-C0 runs pass 50,031,360 FP32 comparisons,
+  alongside 12K internal and all 4,466 profile intervals. The observed pool
+  audit passes 28 tiles, 119 snapshots and 2,940 checkouts across seven chunks:
+  112 selected clear omissions, exactly 536,870,912 bytes per tile, stable
+  distinct identities, exact capacities and checked prior completion.
+  Logical peak is 2,493,173,233 bytes; final weak scratch samples are all zero.
+- Every frozen prerequisite passes. Start the fixed two-warmup/five-pair
+  engine block now. All prefill/order/decode/RSS/footprint gates stay unchanged;
+  no inference or measurement repeats. Default remains unchanged until the
+  complete decision, input-after hashes and final state verification.
+
+## 2026-09-12 — Selective initialization normal/profiled full C0 pass
+
+- Fresh 12K internal and both normal/profiled 32K/128 runs pass. The two full
+  runs compare 33,354,240 FP32 words exactly; all 4,466 profile intervals pass.
+  Model/oracle/prompt and all 7,669 fixture hashes match the frozen inputs.
+- The separate observed 32K run is active. It must pass both full C0 and the
+  prospectively frozen pool audit, including exactly four clear omissions per
+  tile, before the engine block is eligible. No engine timing has started.
+- Work remains inside selective-clear-db1de4a9. Default unchanged; candidate
+  source active pending the complete milestone verdict.
+
+## 2026-09-12 — Selective initialization proof and production build pass
+
+- The new guarded copy-then-in-place-mutation proof passes before runtime
+  edits: 24 cases, 2,147,549,248 payload bytes, 24,576 guard bytes, 12 detected
+  shortened copies and 12 detected missing mutations. Prior diagnostic verdict
+  stays unchanged; this is new evidence under the new plan.
+- Only four full-copy destinations of exactly 134,217,728 bytes omit CPU clears
+  in an active pool with NULL source. The production helper passes 1 GiB of
+  selected-policy checks plus the existing 62,043,240-byte/192,360-guard checks,
+  2,205 identity reuses and 84 rejected invalid checkouts. Source and observer
+  inverses pass; all other initialization and ownership code is unchanged.
+- Preserve one preparation assertion: a repeated observer anchor needed the
+  established function-scoped fallback. It was corrected before runtime edits
+  or builds. All 320 Rust tests, ring/router/weak-ownership proofs, optimized
+  production build and formatting pass. Observer build is active; fresh model
+  validation and engine runs have not started. No candidate is retained yet.
+
+## 2026-09-12 — Start selective scratch initialization milestone
+
+- D approved the next milestone. Prospective plan:
+  rust-star/.work/selective-clear-db1de4a9/plan.json. First close the missing
+  guarded copy-then-in-place-mutation proof, including shortened-copy and
+  omitted-mutation negative controls, before any runtime edits.
+- If that passes, preserve the prior bounded pool and omit CPU clearing only
+  for four exact full-copy destinations. Keep all other 101 initializations,
+  checked completion, ownership bounds and every engine gate unchanged.
+- Require source/GPU/host/build proofs, fresh 12K internal and normal/profiled/
+  observed 32K full C0, then the frozen two-warmup/five-pair engine block.
+  Preserve failures; restore on rejection. Report this milestone and next,
+  then STOP. No publication, remote dispatch or 256K work.
+
 ## 2026-09-12 — Close scratch RSS diagnosis with a protocol gap
 
 - All 25 frozen fresh-process cells complete without repeats or exclusions:
@@ -5577,13 +5684,11 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-12)
 
-- CLOSED SINGLE MILESTONE: scratch RSS diagnostic, with a protocol gap.
-  All 25 measurement cells pass; selected clears save a paired median 511.94 MiB
-  synthetic RSS. The planned after-copy mutation proof is missing, so full
-  protocol/selection is false. Report and authoritative decision:
-  rust-star/reports/scratch-rss-706417ca/README.md (110 artifacts verify).
-  Runtime/default unchanged; no model runs. Close that proof gap before any
-  next candidate; report this milestone and the next proposal, then STOP.
+- COMPLETED SINGLE MILESTONE: selective scratch initialization retained.
+  prefill -11.054%, steady decode +1.362%, RSS +1.819%, footprint +3.728%.
+  Candidate production source and executable are retained locally.
+  Report: rust-star/reports/selective-clear-db1de4a9/README.md (223 artifacts verify).
+  Current work is complete; report the result and next proposal, then STOP.
   Explicit scratch reuse remains rejected on RSS; full C0/pool proofs and all 12
   engine runs are preserved in rust-star/reports/pool-1k-fcdfef5f/README.md.
   Wide bootstrap c7adfb22 is rejected
@@ -6555,14 +6660,11 @@ Next:
 
 ## Immediate Next Actions
 
-1. The scratch RSS diagnostic is closed with a protocol gap. Preserve all 110
-   verified artifacts and the original optimistic audit; decision.json is the
-   authoritative non-selection verdict. Runtime/default remain unchanged.
-2. Report synthetic RSS savings, source/copy coverage and the missing planned
-   after-copy mutation test. No full-engine acceptance or footprint saving claim.
-3. Next proposal, not started: close the guarded copy-then-in-place-mutation
-   test gap, then conditionally evaluate only four destination clear omissions
-   with fresh full C0/pool evidence and unchanged engine/performance/memory gates.
+1. Selective scratch initialization is complete: RETAINED. Preserve all
+   verified evidence and final source/executable identities.
+2. Report full correctness/ownership and engine/memory results with their
+   32K scope. Rust-versus-Rust gains are not DwarfStar parity.
+3. Next proposal, not started: Refresh the direct 32K comparison between the newly accepted Rust runtime and pinned DwarfStar on the same model, prompt and 128-token decode workload. Use fresh paired processes and the existing strict measurement adapters to quantify the remaining performance gap, then choose the next bottleneck from the current profile. Keep larger-frontier work and publication deferred. This proposal has not started.
 4. STOP after the update. Keep oracle-v5 immutable, 256K paused and publication
    deferred; do not begin the next milestone automatically.
 
