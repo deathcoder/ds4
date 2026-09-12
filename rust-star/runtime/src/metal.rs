@@ -26330,7 +26330,17 @@ mod imp {
                 "prefill layer-2 compressors require retained layer-2 KV state",
             ));
         }
-        if rows != 32 && rows != 64 {
+        let native_wide = rows == 4096
+            && !collect_outputs
+            && complete_layer1
+            && include_layer2_compressors
+            && kv_state_mode == 2
+            && shared_context.is_some()
+            && token_source.is_some()
+            && position_start > 0
+            && prefill_rows <= 32768
+            && position_start.checked_add(rows) == Some(prefill_rows);
+        if rows != 32 && rows != 64 && !native_wide {
             return Err(Error::invalid("invalid prefill boundary tile width"));
         }
         if (prefill_rows != 2048
@@ -27965,14 +27975,36 @@ mod imp {
         Option<PrefillLayers012CompressorLoopProbeReport>,
         NativePrefillTiming,
     )> {
+        let tile_rows = if collect_outputs { 32 } else { 64 };
+        run_prefill_layers012_compressor_loop_with_tile_rows(
+            model,
+            context,
+            collect_outputs,
+            position_begin,
+            prefill_rows,
+            tokens,
+            tile_rows,
+        )
+    }
+
+    fn run_prefill_layers012_compressor_loop_with_tile_rows(
+        model: &MappedModel,
+        context: &Context,
+        collect_outputs: bool,
+        position_begin: u32,
+        prefill_rows: u32,
+        tokens: Option<&[u32]>,
+        tile_rows: usize,
+    ) -> Result<(
+        Option<PrefillLayers012CompressorLoopProbeReport>,
+        NativePrefillTiming,
+    )> {
         let bootstrap_started = Instant::now();
-        const DIAGNOSTIC_TILE_ROWS: usize = 32;
-        const PRODUCTION_TILE_ROWS: usize = 64;
-        let tile_rows = if collect_outputs {
-            DIAGNOSTIC_TILE_ROWS
-        } else {
-            PRODUCTION_TILE_ROWS
-        };
+        if (collect_outputs && tile_rows != 32)
+            || (!collect_outputs && tile_rows != 64 && tile_rows != 4096)
+        {
+            return Err(Error::invalid("invalid compressor loop tile width"));
+        }
         if position_begin > prefill_rows || position_begin % tile_rows as u32 != 0 {
             return Err(Error::invalid(
                 "prefill compressor loop has an invalid starting position",

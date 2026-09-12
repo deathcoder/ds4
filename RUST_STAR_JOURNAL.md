@@ -18,6 +18,61 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-12 — Select native wide bootstrap after current-profile acceptance
+
+- The unchanged 4ced6ee8 runtime passes the new normal-output profiled 32K/128
+  run and all 16,677,120 FP32 words. Strict audit accepts every parent packet
+  and tail/attention interval. Recorded stage GPU total is 196.360s;
+  bootstrap ingress is 31.943s (16.27%), routed gate/up 29.092s, attention
+  output 21.095s and routed down 16.134s. These are diagnostic costs only.
+- Selected substantial scheduling work: one 4K native layers-0/1/2 bootstrap
+  batch per continuation chunk instead of sixty-four 64-row calls. Initial
+  prefix, 2K and legacy callers keep 32/64-row schedules; overall frontiers
+  above 32K keep 64-row bootstrap. No imported shader arithmetic changes.
+- Prospective complete-milestone criteria were written before candidate code
+  or execution in .work/autonomous-prefill-a46dfe8b/wide-bootstrap/plan.json:
+  source/restoration/build, 12K internal checks, full normal and profiled
+  32K/128 C0, >=10% target diagnostic reduction raw and control-normalized,
+  then two warm-ups plus five alternating unprofiled pairs with preset
+  prefill/decode/RSS retention gates. No favorable early stopping.
+- Narrow implementation touches metal.rs, long_prefill.rs and metal_shim.m.
+  Explicit native-only guards admit 4096 rows. Position arrays cover 4096
+  rows and 1024 compressor positions. The raw-cache conversion writes only
+  the final aligned 128 rows for a wide batch, retaining old short-row writes.
+  Existing four-row compressor refresh and all math kernels remain unchanged.
+- First build failed before model execution because raw_cache_target_row was
+  removed despite result metadata consumers. Restored the constant; retained
+  failed-build log/source hashes/patch and complete inverse-edit provenance.
+  Corrected release tests and forced native rebuild are active. No candidate
+  correctness or performance result exists yet. Continue through the frozen
+  milestones and then directly to the next project milestone.
+
+## 2026-09-12 — Autonomous milestone sequence authorized
+
+- User explicitly requested continuing milestone after milestone without
+  stopping at individual milestones, until the project is complete. This
+  supersedes the previous per-milestone handoff/stop convention. Preserve all
+  C0, oracle, privacy, publication and evidence contracts.
+- Resume verified at a46dfe8b with unchanged retained runtime 4ced6ee8 and only
+  the three pre-existing untracked paths. Correct checkout remains
+  /Users/deathcodevision/dev/ds4-rust-star-bootstrap; app cwd ds4 is different.
+- First next milestone refreshes the current 32K bottleneck profile, then
+  carries the largest feasible C0-preserving opportunity through implementation,
+  exact validation and prospective whole-engine acceptance. A rejected
+  hypothesis leads to the next justified milestone rather than ending the task.
+- Prospective single-run diagnostic plan, frozen script, source/executable/input
+  verification and privacy-filtered host metadata are under
+  rust-star/.work/autonomous-prefill-a46dfe8b/. Full model, prompt, oracle and
+  all 42 source pins pass. Current full-output profiled 32K/128 run started
+  2026-09-12T04:54:59 UTC. Use active-run.json and execution.log to resume;
+  never launch a duplicate GPU job. Do not edit frozen sources/scripts during it.
+- No arbitrary performance percentage defines project completion. The charter
+  calls the broader research ongoing; keep remaining initial-runtime contracts
+  explicit and do not declare the entire project complete after one gain.
+  The performance-first priority still applies: do not blindly resume the
+  interrupted 256K campaign. Larger-frontier work must follow a justified,
+  recorded milestone plan. No push/publication is added by this instruction.
+
 ## 2026-09-11 — Complete attention-output whole-engine milestone
 
 - Runtime candidate 4ced6ee8 is retained. Verified portable report:
@@ -4798,7 +4853,18 @@ Next:
 ## Current State
 
 
-### Current resume checkpoint (updated 2026-09-11)
+### Current resume checkpoint (updated 2026-09-12)
+
+- ACTIVE: autonomous milestone sequence requested 2026-09-12. Continue through
+  complete milestones; do not stop at individual handoffs. The fresh 32K/128
+  profile of unchanged runtime 4ced6ee8 passes all full-output and counter checks
+  in rust-star/.work/autonomous-prefill-a46dfe8b/. Bootstrap ingress is 31.943s,
+  16.27% of recorded stage GPU time. The scoped native 4K bootstrap candidate
+  is implemented under wide-bootstrap/ there. All 320 release host tests pass;
+  the forced native build is finishing. Next freeze its exact executable and
+  run the prospective 12K internal, full normal 32K and profiled 32K queue,
+  then whole-engine pairs if the diagnostic selection passes. Preserve the
+  first compile-only failure and all source/inverse-edit evidence.
 
 - COMPLETE: attention-output whole-engine milestone. Candidate 4ced6ee8 is
   retained. Report rust-star/reports/attention-output-engine-4ced6ee8/README.md.
@@ -5720,17 +5786,18 @@ Next:
 
 ## Immediate Next Actions
 
-1. Preserve the completed whole-engine decision and its verified report:
-   rust-star/reports/attention-output-engine-4ced6ee8/README.md.
-   Keep the exact tested source/binary/input identities and all earlier failed
-   studies available. No additional measurement is queued.
-2. Any next performance milestone should start from current bottleneck evidence
-   and end at a bounded full-model correctness and whole-engine decision. Do
-   not substitute a synthetic/component improvement for an engine result or
-   infer DwarfStar parity from this Rust-versus-Rust comparison.
-3. Keep 256K paused. New larger-frontier correctness, reference comparisons,
-   publication or broader campaigns require their own scope and prospective
-   plans. No automatic push or return to the interrupted long-context campaign.
+1. Finish and strictly audit the single current-runtime profiled 32K/128 run
+   in rust-star/.work/autonomous-prefill-a46dfe8b/. Preserve any failure and
+   diagnose it; never silently rerun or weaken counter/C0 requirements.
+2. Use that fresh profile and source evidence to select the next substantial
+   C0-preserving change. Freeze its validation and whole-engine criteria before
+   measurement, then implement, validate, retain or revert, package evidence,
+   update this journal and commit locally.
+3. Continue directly to the next justified milestone after each result. Work
+   toward the charter's remaining initial-runtime requirements; do not confuse
+   individual accepted improvements with project completion. Keep 256K paused
+   until the performance-first priority justifies a new frontier plan; preserve
+   no-publication and immutable-oracle boundaries.
 
 ## Entries
 
