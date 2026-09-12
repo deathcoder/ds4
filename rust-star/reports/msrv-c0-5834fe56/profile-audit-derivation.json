@@ -1,0 +1,15 @@
+{
+  "prior": "$REPO/rust-star/.work/autonomous-prefill-a46dfe8b/wide-bootstrap-router-bound/audit-profile.py",
+  "prior_sha256": "c51ef2effa8fd173cbd0d8d332ab9fba1a277a55bbeb19525f49861bf455a351",
+  "edits": [
+    [
+      "len(accept['runs'])==3",
+      "len(accept['runs'])==2"
+    ],
+    [
+      "candidate-32k-profiled",
+      "current-32k-profiled"
+    ]
+  ],
+  "current_sha256": "ec7bf7f8b72201eb63d8d0565fbe46a84c12406a24f4945cd11fadb5eeeb2207"
+}

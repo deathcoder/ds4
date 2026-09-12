@@ -562,6 +562,13 @@ synthetic FP16 comparisons pass; the runtime remains unchanged. The verified
 No reliable speed gain or integration follows. Fresh full-model evidence for
 the Rust 1.74 build is next, before another profile-driven hypothesis.
 
+The current Rust 1.74 build then passes normal and profiled fresh 32K/128 C0:
+33,354,240 exact FP32 comparisons, all 4,466 counter intervals and complete final
+input/source/executable pins. Report `rust-star/reports/msrv-c0-5834fe56/README.md`
+closes its full-model compatibility gap at 32K without a performance claim.
+Bootstrap ingress is 16.233% of recorded GPU stage time; a distinct 1K batch
+hypothesis is next, with explicit memory and whole-engine acceptance gates.
+
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-09, native prefill through all 43 layers
 and the output head is C0 exact at 128K, with 128 exact full-logit decode steps

@@ -1,0 +1,47 @@
+{
+  "schema": "rust-star-msrv-full-c0-v1",
+  "utc": "2026-09-12T07:12:16.594939+00:00",
+  "commit": "5834fe562d087f857802aaf97161e5f0882859a1",
+  "purpose": "Validate current Rust 1.74 executable against immutable oracle-v5 full logits and refresh diagnostic profile before any further runtime optimization.",
+  "runs": [
+    {
+      "name": "current-32k-normal",
+      "context": 32768,
+      "output_only": true,
+      "profile": false
+    },
+    {
+      "name": "current-32k-profiled",
+      "context": 32768,
+      "output_only": true,
+      "profile": true
+    }
+  ],
+  "criteria": [
+    "Both fresh processes exit 0 and match the entire fixed output JSON",
+    "Each run checks prefill and all 128 decode steps: 16,677,120 FP32 words, every bit exact",
+    "Profile passes unchanged stage/component/counter coverage audit",
+    "All source, executable, model, oracle, prompt and fixture pins match before and after"
+  ],
+  "failure_policy": "Preserve all evidence and stop on first execution, correctness or pin failure. No retries or exclusions.",
+  "performance_claim": false,
+  "no_256k": true,
+  "no_publication": true,
+  "indexed_components": [
+    "indexer_q_projection",
+    "indexer_q_transform",
+    "indexer_weight_projection",
+    "indexer_scores",
+    "topk_selection",
+    "topk_ordering",
+    "kv_conversion",
+    "indexed_attention",
+    "inverse_rope"
+  ],
+  "compressed_components": [
+    "kv_conversion",
+    "mask_blocks",
+    "compressed_attention",
+    "inverse_rope"
+  ]
+}

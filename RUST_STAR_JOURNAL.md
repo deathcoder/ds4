@@ -18,6 +18,49 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-12 — Current Rust 1.74 full C0 and profile complete
+
+- Both fresh 32K/128 processes pass all 33,354,240 FP32 comparisons against
+  immutable oracle-v5 outputs. The strict profile audit covers all 4,466
+  intervals. Full model/prompt/oracle, executable, 42 source and 7,669 fixture
+  pins match before and after. Session 4092 is complete and drained.
+- Verified portable report: rust-star/reports/msrv-c0-5834fe56/README.md.
+  Python-only verification .work/msrv-c0-verify-1.log passes; complete source
+  snapshots and compiler-build/profile-audit provenance are included. This
+  closes the Rust 1.74 repair's fresh 32K full-model gap; no speed comparison.
+- Bootstrap ingress totals 32,939.910 GPU ms, 16.233% of recorded stage time.
+  It exceeds the prospective 10% eligibility threshold for a distinct 1K
+  working-set experiment. Four tiles per native 4K continuation chunk preserve
+  legacy/prefix/decode and >32K behavior. Keep previous rejected studies closed.
+- Next: freeze .work/bootstrap-1k-current/ plan with same-compiler baseline,
+  exact source/router/ring/full-C0 gates, diagnostic selection, five fixed
+  engine pairs and separate median peak-memory-footprint ratio <=1.15.
+  Only after this milestone's local commit may preparation mutate runtime.
+
+## 2026-09-12 — Normal current-compiler 32K full C0 passes
+
+- Session 4092 completes current-32k-normal with exact prefill and all 128
+  decode steps: 16,677,120 FP32 words. Entire expected output JSON matches.
+- The same frozen runner starts current-32k-profiled at 07:18:55 UTC. Finish
+  its full C0, unchanged component audit and final complete input/source hashes
+  before packaging. No throughput or compiler performance claim follows.
+
+## 2026-09-12 — Current Rust 1.74 full-model C0 validation active
+
+- Routed-half median report closes at 5834fe56; its work-directory milestone
+  completion records the verified unselected decision and unchanged runtime.
+- .work/msrv-c0-5834fe56/plan.json prospectively fixes two fresh 32K/128
+  full-output processes: normal, then profiled. Any failure stops; no retries.
+- Full model, prompt, oracle source/binaries, current executable, all 42 runtime
+  sources and all 7,669 tracked fixture files are hashed and frozen. GPU idle
+  during hashing. Current executable d8c3919e was built with Rust 1.74; accepted
+  historical performance executable stays unchanged and separate.
+- Session 4092 runs run.py; read execution.log and active-run.json. No runtime
+  edits, heavy compilation or other GPU work until both runs and final pins close.
+  The unchanged profile coverage audit is adapted only for two runs and their
+  names. This is exactness and diagnostic profiling, not a timing comparison.
+- Prepared package/verify tools are result-independent; run only on completion.
+
 ## 2026-09-12 — Close longer median protocol; routed-half remains unselected
 
 - All five frozen runs completed, 23,015,768,064 exact FP16 comparisons,
@@ -5180,10 +5223,16 @@ Next:
 - COMPLETE: longer median protocol, 83 verified artifacts and 23,015,768,064
   exact FP16 comparisons. Initial controls pass; two mixed neutral cells and
   candidate speed gates fail. No reliable gain or integration. Report:
-  rust-star/reports/routed-half-median-abe52d80/README.md. No GPU job active.
-- NEXT: freeze current Rust 1.74 normal/profiled 32K/128 full-C0 validation;
-  host compatibility alone does not establish full-model exactness. Continue
-  profile-driven work afterward. Keep 256K paused and publication deferred.
+  rust-star/reports/routed-half-median-abe52d80/README.md. GPU validation is active below.
+- COMPLETE: current Rust 1.74 normal/profiled 32K/128 full C0; 33,354,240
+  exact FP32 comparisons and all 4,466 profile intervals pass. All final input,
+  fixture, source and executable hashes match. Report:
+  rust-star/reports/msrv-c0-5834fe56/README.md. No GPU job active.
+- NEXT: distinct 1K bootstrap working-set experiment with same-compiler baseline.
+  Refreshed bootstrap share 16.233% passes the prospective >=10% target threshold.
+  Require source/router/ring/internal/full-C0 proofs and all fixed whole-engine
+  gates, including separate peak-memory-footprint median ratio <=1.15.
+  Keep 256K paused, oracle-v5 immutable and publication deferred.
 
 - COMPLETE: attention-output whole-engine milestone. Candidate 4ced6ee8 is
   retained. Report rust-star/reports/attention-output-engine-4ced6ee8/README.md.
@@ -6105,13 +6154,15 @@ Next:
 
 ## Immediate Next Actions
 
-1. Both routed-half studies are closed without selection. Preserve all failed
-   controls, speed gates and samples; no integration or retrospective rescue.
-2. Freeze and run normal/profiled full 32K/128 C0 for current Rust 1.74 source
-   and executable. Use immutable oracle-v5 fixtures and inspect every FP32 word.
-3. Continue a distinct profile-led hypothesis with prospective gates. The 1K
-   bootstrap working-set idea is unmeasured; no implementation is accepted.
-4. Continue the charter's initial scope without publication or resuming 256K.
+1. Current Rust 1.74 full-model C0/profile is complete. Preserve both routed-half
+   failures and the 4K-bootstrap rejection without reinterpretation or reruns.
+2. Freeze and build the distinct 1K-bootstrap experiment at
+   .work/bootstrap-1k-current/. Only its scoped three files may change. Require
+   full source inverse, existing tests, actual router and ring proofs first.
+3. If build/proofs pass, run 12K internal checks plus normal/profiled 32K/128 C0;
+   select a fixed whole-engine block only if diagnostic thresholds pass.
+4. Retain only after all predeclared timing/decode/RSS/footprint gates; otherwise
+   restore accepted source and continue. No automatic 256K or publication.
 
 ## Entries
 

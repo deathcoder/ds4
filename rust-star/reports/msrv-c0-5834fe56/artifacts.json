@@ -1,0 +1,622 @@
+{
+  "schema": "rust-star-msrv-c0-artifacts-v1",
+  "utc": "2026-09-12T07:24:35.288285+00:00",
+  "files": {
+    "active-run.json": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "13abb61076fa153eae6cbf3ee4a823ae385004d09a1c6ca10f389fd73e40e4a7",
+      "stored_sha256": "13abb61076fa153eae6cbf3ee4a823ae385004d09a1c6ca10f389fd73e40e4a7",
+      "original_bytes": 106,
+      "stored_bytes": 106,
+      "redacted": false
+    },
+    "audit-profile.py": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "ec7bf7f8b72201eb63d8d0565fbe46a84c12406a24f4945cd11fadb5eeeb2207",
+      "stored_sha256": "ec7bf7f8b72201eb63d8d0565fbe46a84c12406a24f4945cd11fadb5eeeb2207",
+      "original_bytes": 5161,
+      "stored_bytes": 5161,
+      "redacted": false
+    },
+    "completion.json": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "1df882de2b37736db1401fe3b42db37164a79fdde307a2d5dab3a9f2110534f6",
+      "stored_sha256": "1df882de2b37736db1401fe3b42db37164a79fdde307a2d5dab3a9f2110534f6",
+      "original_bytes": 1109641,
+      "stored_bytes": 1109641,
+      "redacted": false
+    },
+    "current-32k-normal-host.jsonl": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "84719150954f0db19e26004d999a8789d6b6cf340be56f2107d7055382396bd7",
+      "stored_sha256": "84719150954f0db19e26004d999a8789d6b6cf340be56f2107d7055382396bd7",
+      "original_bytes": 18726,
+      "stored_bytes": 18726,
+      "redacted": false
+    },
+    "current-32k-normal-preflight.json": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "8e8039ddc674559049c6684f6f0768a4d3be98479d70fd335f9e80006fd88e63",
+      "stored_sha256": "8e8039ddc674559049c6684f6f0768a4d3be98479d70fd335f9e80006fd88e63",
+      "original_bytes": 88,
+      "stored_bytes": 88,
+      "redacted": false
+    },
+    "current-32k-normal-status.json": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "48d38fcd99f2542e092028e82b292baa2d20b74beb55a10baca77d330109e7f3",
+      "stored_sha256": "48d38fcd99f2542e092028e82b292baa2d20b74beb55a10baca77d330109e7f3",
+      "original_bytes": 319,
+      "stored_bytes": 319,
+      "redacted": false
+    },
+    "current-32k-normal.json": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "ea7a152709d145948fd5710ac1b93212dc93d5a1a2c633e09f9ef31ab1ddd1f1",
+      "stored_sha256": "ea7a152709d145948fd5710ac1b93212dc93d5a1a2c633e09f9ef31ab1ddd1f1",
+      "original_bytes": 424,
+      "stored_bytes": 424,
+      "redacted": false
+    },
+    "current-32k-normal.log": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "7782003cfda9a2e882b74b765de754e0fb98a271b8567ee952e14eb49ecd9373",
+      "stored_sha256": "7782003cfda9a2e882b74b765de754e0fb98a271b8567ee952e14eb49ecd9373",
+      "original_bytes": 10304,
+      "stored_bytes": 10304,
+      "redacted": false
+    },
+    "current-32k-profiled-components.json": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "a3305a221552d03a1d634dfaf0d327ff9ea4ccc7ab0f227cc1306257eca3e291",
+      "stored_sha256": "a3305a221552d03a1d634dfaf0d327ff9ea4ccc7ab0f227cc1306257eca3e291",
+      "original_bytes": 929050,
+      "stored_bytes": 929050,
+      "redacted": false
+    },
+    "current-32k-profiled-host.jsonl": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "3596d1fa818e2034aa70f1882ca34ecee7d35da1f82f79a4352f9ad6d760df43",
+      "stored_sha256": "3596d1fa818e2034aa70f1882ca34ecee7d35da1f82f79a4352f9ad6d760df43",
+      "original_bytes": 17039,
+      "stored_bytes": 17039,
+      "redacted": false
+    },
+    "current-32k-profiled-preflight.json": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "76813f5726da82805930351986a71b88500af13c7400977639db42345a0e3584",
+      "stored_sha256": "76813f5726da82805930351986a71b88500af13c7400977639db42345a0e3584",
+      "original_bytes": 88,
+      "stored_bytes": 88,
+      "redacted": false
+    },
+    "current-32k-profiled-status.json": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "2e6c5d8c09614d84c250bbb3073ffec95cf1b5fa92a89de535cc74870346885e",
+      "stored_sha256": "2e6c5d8c09614d84c250bbb3073ffec95cf1b5fa92a89de535cc74870346885e",
+      "original_bytes": 321,
+      "stored_bytes": 321,
+      "redacted": false
+    },
+    "current-32k-profiled.json": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "ea7a152709d145948fd5710ac1b93212dc93d5a1a2c633e09f9ef31ab1ddd1f1",
+      "stored_sha256": "ea7a152709d145948fd5710ac1b93212dc93d5a1a2c633e09f9ef31ab1ddd1f1",
+      "original_bytes": 424,
+      "stored_bytes": 424,
+      "redacted": false
+    },
+    "current-32k-profiled.log": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "c514eaf1910ea4d9bef4e07ea3b35c9be9b089fe3984a560577e4ae07f4bf212",
+      "stored_sha256": "c514eaf1910ea4d9bef4e07ea3b35c9be9b089fe3984a560577e4ae07f4bf212",
+      "original_bytes": 10304,
+      "stored_bytes": 10304,
+      "redacted": false
+    },
+    "execution.log": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "d7492849489eb5b74866f63321bb5578a8f38ad8fbfe5a8299f5ddc95500ceda",
+      "stored_sha256": "d7492849489eb5b74866f63321bb5578a8f38ad8fbfe5a8299f5ddc95500ceda",
+      "original_bytes": 5000,
+      "stored_bytes": 5000,
+      "redacted": false
+    },
+    "expected-output.json": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "ea7a152709d145948fd5710ac1b93212dc93d5a1a2c633e09f9ef31ab1ddd1f1",
+      "stored_sha256": "ea7a152709d145948fd5710ac1b93212dc93d5a1a2c633e09f9ef31ab1ddd1f1",
+      "original_bytes": 424,
+      "stored_bytes": 424,
+      "redacted": false
+    },
+    "final-source-pins.json": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "e50234a9c49fd26b46e0420214523ca6c922ada561930b387b45d6bb3670d8a0",
+      "stored_sha256": "e50234a9c49fd26b46e0420214523ca6c922ada561930b387b45d6bb3670d8a0",
+      "original_bytes": 88,
+      "stored_bytes": 88,
+      "redacted": false
+    },
+    "freeze.json": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "9db78baa9a0aff5040349ab74599a95d5c9c1afd77347331bf1656fc5923a970",
+      "stored_sha256": "9db78baa9a0aff5040349ab74599a95d5c9c1afd77347331bf1656fc5923a970",
+      "original_bytes": 1110303,
+      "stored_bytes": 1110303,
+      "redacted": false
+    },
+    "next-bootstrap-design.md": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "ae0719a5dd2df6960e377db2485e5ec17a79ea5f17b07d83b0237c0a829ec0c4",
+      "stored_sha256": "ae0719a5dd2df6960e377db2485e5ec17a79ea5f17b07d83b0237c0a829ec0c4",
+      "original_bytes": 2931,
+      "stored_bytes": 2931,
+      "redacted": false
+    },
+    "package.py": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "88b231b95230a4fa191c6e57f2b6c0f99f628023e7d695a84312a7feffb2c9f5",
+      "stored_sha256": "623b085d1d437390bd9188224c7ee47dee5710cebabc1e5b9f823ca4d3a01583",
+      "original_bytes": 1968,
+      "stored_bytes": 1951,
+      "redacted": true
+    },
+    "plan.json": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "af3293842d0cbd63ab1cb2e804aad75185ec26ea060810cf46c7a2b5d3efa93b",
+      "stored_sha256": "af3293842d0cbd63ab1cb2e804aad75185ec26ea060810cf46c7a2b5d3efa93b",
+      "original_bytes": 1501,
+      "stored_bytes": 1501,
+      "redacted": false
+    },
+    "preflight.log": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "c165bd91d098ed956b8c44b948f352cff8e879644ba8c5110fddd87fc9d4656e",
+      "stored_sha256": "c165bd91d098ed956b8c44b948f352cff8e879644ba8c5110fddd87fc9d4656e",
+      "original_bytes": 107,
+      "stored_bytes": 107,
+      "redacted": false
+    },
+    "preflight.py": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "21ed5955c06e3ba458f95b477dbd8b69fbc413e7ff1080654c13af5e084fef15",
+      "stored_sha256": "934f968c71733d288f8cb9fbba5dc1b01d16e6c2aa2af300d2a09f15c2a03275",
+      "original_bytes": 2364,
+      "stored_bytes": 2347,
+      "redacted": true
+    },
+    "profile-audit-derivation.json": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "c19078ea289f27ea493dc1e9a0c93e20365fe2bce6581648d28760fc64518a90",
+      "stored_sha256": "12ff2b4d1bf751496c7d6f5b7550afd426b87d851fb98800b26916773ef13e44",
+      "original_bytes": 498,
+      "stored_bytes": 453,
+      "redacted": true
+    },
+    "profile-audit.json": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "1fe5ef8439c91b1c3b9b23b7cd8eb744c75d3f228b95c67c630094bf9ec713a1",
+      "stored_sha256": "1fe5ef8439c91b1c3b9b23b7cd8eb744c75d3f228b95c67c630094bf9ec713a1",
+      "original_bytes": 296549,
+      "stored_bytes": 296549,
+      "redacted": false
+    },
+    "run.py": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "9251119d479ab85a63df64e0e9afc42579852dbaf66464439099fd17a036d784",
+      "stored_sha256": "bbcc0bf97ae2e5fcbb150b6bf879edd2d11c0427ca631edc5a119b4b3a39cab3",
+      "original_bytes": 4284,
+      "stored_bytes": 4267,
+      "redacted": true
+    },
+    "source-reference.json": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "142317c512541b4d8d9f964f55d8478681d11576798d9612b650dee6119a3449",
+      "stored_sha256": "142317c512541b4d8d9f964f55d8478681d11576798d9612b650dee6119a3449",
+      "original_bytes": 5223,
+      "stored_bytes": 5223,
+      "redacted": false
+    },
+    "validation-acceptance.json": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "2e0b5204d72a6720d0b544d17d55aa0b83216a6ab3ad1c1e73dd138b394f6621",
+      "stored_sha256": "2e0b5204d72a6720d0b544d17d55aa0b83216a6ab3ad1c1e73dd138b394f6621",
+      "original_bytes": 857,
+      "stored_bytes": 857,
+      "redacted": false
+    },
+    "validation-progress.json": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "72ced6eb15b0f116b2969b0d6778db8f7ffc317c5979850f19131b67777a1ee1",
+      "stored_sha256": "72ced6eb15b0f116b2969b0d6778db8f7ffc317c5979850f19131b67777a1ee1",
+      "original_bytes": 681,
+      "stored_bytes": 681,
+      "redacted": false
+    },
+    "verify-report.py": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "65618f6e75536927da5130de0626b864d8353eaee8e7719f825321a917ff930f",
+      "stored_sha256": "65618f6e75536927da5130de0626b864d8353eaee8e7719f825321a917ff930f",
+      "original_bytes": 3315,
+      "stored_bytes": 3315,
+      "redacted": false
+    },
+    "write-report.py": {
+      "origin": "completed frozen local full-C0 validation",
+      "original_sha256": "b69a5f64ac6a3893c55d701be59554589e17e83a7631e9156e1e52fabdafbe53",
+      "stored_sha256": "b69a5f64ac6a3893c55d701be59554589e17e83a7631e9156e1e52fabdafbe53",
+      "original_bytes": 3753,
+      "stored_bytes": 3753,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/Cargo.lock": {
+      "origin": "frozen runtime source",
+      "original_sha256": "516cbf27fb072b7f98950ddbb6a3e562641069cf3c4ce12a57410c91cb74481f",
+      "stored_sha256": "516cbf27fb072b7f98950ddbb6a3e562641069cf3c4ce12a57410c91cb74481f",
+      "original_bytes": 161,
+      "stored_bytes": 161,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/Cargo.toml": {
+      "origin": "frozen runtime source",
+      "original_sha256": "af6d16ca5cf8c14d514043e1136165441d5134cd0f96b251d366a6cb37519c59",
+      "stored_sha256": "af6d16ca5cf8c14d514043e1136165441d5134cd0f96b251d366a6cb37519c59",
+      "original_bytes": 396,
+      "stored_bytes": 396,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/METAL.md": {
+      "origin": "frozen runtime source",
+      "original_sha256": "975d07197a5c6ec837967b97aa002dfebe48c3327b1c9c724c207d9c1b9320f8",
+      "stored_sha256": "975d07197a5c6ec837967b97aa002dfebe48c3327b1c9c724c207d9c1b9320f8",
+      "original_bytes": 63343,
+      "stored_bytes": 63343,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/README.md": {
+      "origin": "frozen runtime source",
+      "original_sha256": "cc5e4cbda5b5a3d216a4e66858147b71ee2deed77c26ca231bb70d3d68b283cd",
+      "stored_sha256": "cc5e4cbda5b5a3d216a4e66858147b71ee2deed77c26ca231bb70d3d68b283cd",
+      "original_bytes": 77768,
+      "stored_bytes": 77768,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/build.rs": {
+      "origin": "frozen runtime source",
+      "original_sha256": "e0aa48ee151951cc608b54c569b98521292feb6ddcd08432a77af18af836ac17",
+      "stored_sha256": "e0aa48ee151951cc608b54c569b98521292feb6ddcd08432a77af18af836ac17",
+      "original_bytes": 7166,
+      "stored_bytes": 7166,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/examples/write_logit_fixture.rs": {
+      "origin": "frozen runtime source",
+      "original_sha256": "ad498209e52812f37a1fe9fa1790603ff46a0eeebf548015f85a9c7cccab5d0b",
+      "stored_sha256": "ad498209e52812f37a1fe9fa1790603ff46a0eeebf548015f85a9c7cccab5d0b",
+      "original_bytes": 893,
+      "stored_bytes": 893,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/artifact.rs": {
+      "origin": "frozen runtime source",
+      "original_sha256": "f8c502ef7b47dbea7787f3a21bba5661da4accc33d4a44bb06db19f9f0cac9ea",
+      "stored_sha256": "f8c502ef7b47dbea7787f3a21bba5661da4accc33d4a44bb06db19f9f0cac9ea",
+      "original_bytes": 5692,
+      "stored_bytes": 5692,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/attention_ingress.metal": {
+      "origin": "frozen runtime source",
+      "original_sha256": "76a70b1eb6510f897293c9cdc7257d58a69d3a3cb372a0175af24eb8820187f7",
+      "stored_sha256": "76a70b1eb6510f897293c9cdc7257d58a69d3a3cb372a0175af24eb8820187f7",
+      "original_bytes": 28467,
+      "stored_bytes": 28467,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/attention_output.metal": {
+      "origin": "frozen runtime source",
+      "original_sha256": "92999a85674740404a174c74755d8c4307697e477ca7755063054fe7fc5c0451",
+      "stored_sha256": "92999a85674740404a174c74755d8c4307697e477ca7755063054fe7fc5c0451",
+      "original_bytes": 9189,
+      "stored_bytes": 9189,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/ffn_router.metal": {
+      "origin": "frozen runtime source",
+      "original_sha256": "9ccae569e372358381ca18860c2cc039d69aa2b82b1e0601bef78ccef4d43d69",
+      "stored_sha256": "9ccae569e372358381ca18860c2cc039d69aa2b82b1e0601bef78ccef4d43d69",
+      "original_bytes": 7706,
+      "stored_bytes": 7706,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/frontier_reference.rs": {
+      "origin": "frozen runtime source",
+      "original_sha256": "1ad2d72a702fe637fc7aae3aaf55f8147022573e675658c4338130c6bdd7f1df",
+      "stored_sha256": "1ad2d72a702fe637fc7aae3aaf55f8147022573e675658c4338130c6bdd7f1df",
+      "original_bytes": 5121,
+      "stored_bytes": 5121,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/gguf.rs": {
+      "origin": "frozen runtime source",
+      "original_sha256": "234566f4d37368739764841b4dd1b509be9aa3330c3b20025b6436001f71a31c",
+      "stored_sha256": "234566f4d37368739764841b4dd1b509be9aa3330c3b20025b6436001f71a31c",
+      "original_bytes": 24502,
+      "stored_bytes": 24502,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/indexer_argsort.metal": {
+      "origin": "frozen runtime source",
+      "original_sha256": "0c868f5cbf751f889bb73aa5ac8599ff2b4359d9ed9aabd035043550256df790",
+      "stored_sha256": "0c868f5cbf751f889bb73aa5ac8599ff2b4359d9ed9aabd035043550256df790",
+      "original_bytes": 8348,
+      "stored_bytes": 8348,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/indexer_scores.metal": {
+      "origin": "frozen runtime source",
+      "original_sha256": "6e95a675e722d24e5befac0d510d12c7e0313a7b6de3ab9521d13fa70f46963d",
+      "stored_sha256": "6e95a675e722d24e5befac0d510d12c7e0313a7b6de3ab9521d13fa70f46963d",
+      "original_bytes": 5511,
+      "stored_bytes": 5511,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/lib.rs": {
+      "origin": "frozen runtime source",
+      "original_sha256": "1144b42d2717c029f6192ddf38d0ab93b77fddf7aad095986142fd5af1b5d222",
+      "stored_sha256": "1144b42d2717c029f6192ddf38d0ab93b77fddf7aad095986142fd5af1b5d222",
+      "original_bytes": 1298,
+      "stored_bytes": 1298,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/long_prefill.rs": {
+      "origin": "frozen runtime source",
+      "original_sha256": "eaa359fff90cced114602e7d5838463142efd2ebc220d9611b505db9b8371536",
+      "stored_sha256": "eaa359fff90cced114602e7d5838463142efd2ebc220d9611b505db9b8371536",
+      "original_bytes": 56418,
+      "stored_bytes": 56418,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/long_prefill_checksums.rs": {
+      "origin": "frozen runtime source",
+      "original_sha256": "a59d695baadd9848ee70dae4510981b2166e6b6f6d5f7e1bb1de5c9749cc3422",
+      "stored_sha256": "a59d695baadd9848ee70dae4510981b2166e6b6f6d5f7e1bb1de5c9749cc3422",
+      "original_bytes": 8120,
+      "stored_bytes": 8120,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/main.rs": {
+      "origin": "frozen runtime source",
+      "original_sha256": "bae91a4d0ea8edcce6e554d947980ed931af14c3648bc651253163ba89fca2bb",
+      "stored_sha256": "bae91a4d0ea8edcce6e554d947980ed931af14c3648bc651253163ba89fca2bb",
+      "original_bytes": 264262,
+      "stored_bytes": 264262,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/metal.rs": {
+      "origin": "frozen runtime source",
+      "original_sha256": "6b3b4b579bded71a044f2270d06fc0a00aef805791b427fc36cbb6bdcddb9088",
+      "stored_sha256": "6b3b4b579bded71a044f2270d06fc0a00aef805791b427fc36cbb6bdcddb9088",
+      "original_bytes": 3132215,
+      "stored_bytes": 3132215,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/metal_shim.h": {
+      "origin": "frozen runtime source",
+      "original_sha256": "866c5735cf16ab778fca91ecf593ca353f379d336f3012cb38c4f90459e163ce",
+      "stored_sha256": "866c5735cf16ab778fca91ecf593ca353f379d336f3012cb38c4f90459e163ce",
+      "original_bytes": 106798,
+      "stored_bytes": 106798,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/metal_shim.m": {
+      "origin": "frozen runtime source",
+      "original_sha256": "b5aaf2ca003f0d6ee102a75a44fd14d7c6507461813c56067d648e3cc876cd6f",
+      "stored_sha256": "b5aaf2ca003f0d6ee102a75a44fd14d7c6507461813c56067d648e3cc876cd6f",
+      "original_bytes": 3020693,
+      "stored_bytes": 3020693,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/model.rs": {
+      "origin": "frozen runtime source",
+      "original_sha256": "b5c9f42b1f56461e40474e9819fdd5bfee359ebdeaa121dbe9c33081bf090541",
+      "stored_sha256": "b5c9f42b1f56461e40474e9819fdd5bfee359ebdeaa121dbe9c33081bf090541",
+      "original_bytes": 6246,
+      "stored_bytes": 6246,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/moe_output_prefix.metal": {
+      "origin": "frozen runtime source",
+      "original_sha256": "fd071235d773bfa72a870df223fac3fdb5ce128e51ac5bd10a3abb503184aa03",
+      "stored_sha256": "fd071235d773bfa72a870df223fac3fdb5ce128e51ac5bd10a3abb503184aa03",
+      "original_bytes": 963,
+      "stored_bytes": 963,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/q8_projection_pair.metal": {
+      "origin": "frozen runtime source",
+      "original_sha256": "347811e00c5e5e52eea1451dfdbc809aa455b4e2a76134f604f5386d0ab40a52",
+      "stored_sha256": "347811e00c5e5e52eea1451dfdbc809aa455b4e2a76134f604f5386d0ab40a52",
+      "original_bytes": 4869,
+      "stored_bytes": 4869,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/remaining_prefill.rs": {
+      "origin": "frozen runtime source",
+      "original_sha256": "58ff784715cc21a841105cbb3c6449c4d0d2912c43e6aee72b33b803c1b709a6",
+      "stored_sha256": "58ff784715cc21a841105cbb3c6449c4d0d2912c43e6aee72b33b803c1b709a6",
+      "original_bytes": 54801,
+      "stored_bytes": 54801,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/remaining_prefill_checksums.rs": {
+      "origin": "frozen runtime source",
+      "original_sha256": "9cc602acd4b1d3b930c106b096617661154f23a9e247c0efc15fe09148214edf",
+      "stored_sha256": "9cc602acd4b1d3b930c106b096617661154f23a9e247c0efc15fe09148214edf",
+      "original_bytes": 19456,
+      "stored_bytes": 19456,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/routed_prefill.metal": {
+      "origin": "frozen runtime source",
+      "original_sha256": "78722daa500da63d25278d4eff97460f6c793d076515597a13ae9f39845a939d",
+      "stored_sha256": "78722daa500da63d25278d4eff97460f6c793d076515597a13ae9f39845a939d",
+      "original_bytes": 7916,
+      "stored_bytes": 7916,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/sparse_indexed_prefix.metal": {
+      "origin": "frozen runtime source",
+      "original_sha256": "5fa4a992c13a676aa3a3285bb453865c5c16a227fec34a2c9622eae0cf989f28",
+      "stored_sha256": "5fa4a992c13a676aa3a3285bb453865c5c16a227fec34a2c9622eae0cf989f28",
+      "original_bytes": 152,
+      "stored_bytes": 152,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/target.rs": {
+      "origin": "frozen runtime source",
+      "original_sha256": "7dc081b489827feda6dfcab64d5a015d4b7332d4457c06d8904fcf83dbdd87b1",
+      "stored_sha256": "7dc081b489827feda6dfcab64d5a015d4b7332d4457c06d8904fcf83dbdd87b1",
+      "original_bytes": 24643,
+      "stored_bytes": 24643,
+      "redacted": false
+    },
+    "sources/metal/cpy.metal": {
+      "origin": "frozen runtime source",
+      "original_sha256": "88d77cb71d83295be4097f2b820f60daac3bbbc75e1d4caf68327727be382ec4",
+      "stored_sha256": "88d77cb71d83295be4097f2b820f60daac3bbbc75e1d4caf68327727be382ec4",
+      "original_bytes": 9219,
+      "stored_bytes": 9219,
+      "redacted": false
+    },
+    "sources/metal/dense.metal": {
+      "origin": "frozen runtime source",
+      "original_sha256": "fc1d031785fe3c601b00f0c34b24ef8325ed233bc86cdd2fc224e7c6d5fcff6f",
+      "stored_sha256": "fc1d031785fe3c601b00f0c34b24ef8325ed233bc86cdd2fc224e7c6d5fcff6f",
+      "original_bytes": 89492,
+      "stored_bytes": 89492,
+      "redacted": false
+    },
+    "sources/metal/dsv4_hc.metal": {
+      "origin": "frozen runtime source",
+      "original_sha256": "7ba6007b9212331ba2e737326432fa9ac76671e9875a8dae84b8fd28be78360c",
+      "stored_sha256": "7ba6007b9212331ba2e737326432fa9ac76671e9875a8dae84b8fd28be78360c",
+      "original_bytes": 37924,
+      "stored_bytes": 37924,
+      "redacted": false
+    },
+    "sources/metal/dsv4_kv.metal": {
+      "origin": "frozen runtime source",
+      "original_sha256": "97b4006868d5f98729897acbeefc44713cfd9e543fd87147df497eda3f2992a0",
+      "stored_sha256": "97b4006868d5f98729897acbeefc44713cfd9e543fd87147df497eda3f2992a0",
+      "original_bytes": 13205,
+      "stored_bytes": 13205,
+      "redacted": false
+    },
+    "sources/metal/dsv4_misc.metal": {
+      "origin": "frozen runtime source",
+      "original_sha256": "da219cb48b0c729985e9bedaba05a76108b10e68d63366ac0bdf2c4cd2522c86",
+      "stored_sha256": "da219cb48b0c729985e9bedaba05a76108b10e68d63366ac0bdf2c4cd2522c86",
+      "original_bytes": 256459,
+      "stored_bytes": 256459,
+      "redacted": false
+    },
+    "sources/metal/dsv4_rope.metal": {
+      "origin": "frozen runtime source",
+      "original_sha256": "3613c5ac98cb7c7b07b00c0ebc18324addd928db7dda008e9da52f1d8bec5471",
+      "stored_sha256": "3613c5ac98cb7c7b07b00c0ebc18324addd928db7dda008e9da52f1d8bec5471",
+      "original_bytes": 22509,
+      "stored_bytes": 22509,
+      "redacted": false
+    },
+    "sources/metal/flash_attn.metal": {
+      "origin": "frozen runtime source",
+      "original_sha256": "095aa88594e1d25e6c23e9bdf7473de8c5de39bc2e2b98c049b48229b309996d",
+      "stored_sha256": "095aa88594e1d25e6c23e9bdf7473de8c5de39bc2e2b98c049b48229b309996d",
+      "original_bytes": 54713,
+      "stored_bytes": 54713,
+      "redacted": false
+    },
+    "sources/metal/glu.metal": {
+      "origin": "frozen runtime source",
+      "original_sha256": "59281e30a27cc2eb618800b6e53a57e234f65f1a1e680d6267d9139e1a06b627",
+      "stored_sha256": "59281e30a27cc2eb618800b6e53a57e234f65f1a1e680d6267d9139e1a06b627",
+      "original_bytes": 2129,
+      "stored_bytes": 2129,
+      "redacted": false
+    },
+    "sources/metal/moe.metal": {
+      "origin": "frozen runtime source",
+      "original_sha256": "81090179e8d41c15efb48279c023c2b66935d40c02a39e0fcf26eacd70f2ae33",
+      "stored_sha256": "81090179e8d41c15efb48279c023c2b66935d40c02a39e0fcf26eacd70f2ae33",
+      "original_bytes": 346963,
+      "stored_bytes": 346963,
+      "redacted": false
+    },
+    "sources/metal/softmax.metal": {
+      "origin": "frozen runtime source",
+      "original_sha256": "6eaa6ce78c4b221b3c7fe45647d6eb42f165201992a243d77d04cf2668fb7664",
+      "stored_sha256": "6eaa6ce78c4b221b3c7fe45647d6eb42f165201992a243d77d04cf2668fb7664",
+      "original_bytes": 7679,
+      "stored_bytes": 7679,
+      "redacted": false
+    },
+    "sources/metal/sum_rows.metal": {
+      "origin": "frozen runtime source",
+      "original_sha256": "7e1f3ad3f945b1f6f59aa2d8ee5bf464052d989a632c33ea95ce50d3c4fbf0fc",
+      "stored_sha256": "7e1f3ad3f945b1f6f59aa2d8ee5bf464052d989a632c33ea95ce50d3c4fbf0fc",
+      "original_bytes": 2737,
+      "stored_bytes": 2737,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/compressed_prefill.metal": {
+      "origin": "frozen runtime source",
+      "original_sha256": "2a141d74f07a81d666eebda8b12d10f685ca63a25046ecc246fd5ee4a328d7d1",
+      "stored_sha256": "2a141d74f07a81d666eebda8b12d10f685ca63a25046ecc246fd5ee4a328d7d1",
+      "original_bytes": 25962,
+      "stored_bytes": 25962,
+      "redacted": false
+    },
+    "sources/rust-star/runtime/src/attention_output_half.metal": {
+      "origin": "frozen runtime source",
+      "original_sha256": "e26a8cffc83af3b350dcf78f1d1dde7eb10d1ed0247002f99bed1d085ea55ab7",
+      "stored_sha256": "e26a8cffc83af3b350dcf78f1d1dde7eb10d1ed0247002f99bed1d085ea55ab7",
+      "original_bytes": 595,
+      "stored_bytes": 595,
+      "redacted": false
+    },
+    "build-reference.json": {
+      "origin": "compiler compatibility build provenance",
+      "original_sha256": "64f65df570803fa8ffe171f7b942de4ca944c171935e21648a993f6f8938d917",
+      "stored_sha256": "64f65df570803fa8ffe171f7b942de4ca944c171935e21648a993f6f8938d917",
+      "original_bytes": 128,
+      "stored_bytes": 128,
+      "redacted": false
+    },
+    "profile-audit-reference.json": {
+      "origin": "unchanged component audit provenance",
+      "original_sha256": "8662b24d230190ee445320d8300222d523b027485be74092d311088b66475990",
+      "stored_sha256": "8662b24d230190ee445320d8300222d523b027485be74092d311088b66475990",
+      "original_bytes": 134,
+      "stored_bytes": 134,
+      "redacted": false
+    },
+    "binary-identity.json": {
+      "origin": "frozen Rust 1.74 executable identity",
+      "original_sha256": "39b25e31bc701c688d72126cbc9b87b58a2d14327ab92b1ee5d1b40708135d25",
+      "stored_sha256": "39b25e31bc701c688d72126cbc9b87b58a2d14327ab92b1ee5d1b40708135d25",
+      "original_bytes": 125,
+      "stored_bytes": 125,
+      "redacted": false
+    },
+    "README.md": {
+      "origin": "complete fresh current-compiler C0 milestone",
+      "original_sha256": "59b8a85f2be104a1b4fede0fbdaf9ba249d145334a58048c0b28e57799b2af45",
+      "stored_sha256": "59b8a85f2be104a1b4fede0fbdaf9ba249d145334a58048c0b28e57799b2af45",
+      "original_bytes": 3078,
+      "stored_bytes": 3078,
+      "redacted": false
+    }
+  }
+}
