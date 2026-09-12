@@ -1,0 +1,41 @@
+{
+  "utc": "2026-09-12T06:53:09.747359+00:00",
+  "accepted_commit": "abe52d805638380df2184321e68044d0ef9ae924",
+  "accepted_host_sha256": "b5aaf2ca003f0d6ee102a75a44fd14d7c6507461813c56067d648e3cc876cd6f",
+  "prior_milestone_sha256": "84fcb11d5932e182c442146c602d6ee793eb9e86299ee44a5fc5a6f8fa15c073",
+  "sources": {
+    "rust-star/runtime/src/moe_output_prefix.metal": "fd071235d773bfa72a870df223fac3fdb5ce128e51ac5bd10a3abb503184aa03",
+    "metal/flash_attn.metal": "095aa88594e1d25e6c23e9bdf7473de8c5de39bc2e2b98c049b48229b309996d",
+    "metal/dense.metal": "fc1d031785fe3c601b00f0c34b24ef8325ed233bc86cdd2fc224e7c6d5fcff6f",
+    "metal/glu.metal": "59281e30a27cc2eb618800b6e53a57e234f65f1a1e680d6267d9139e1a06b627",
+    "metal/moe.metal": "81090179e8d41c15efb48279c023c2b66935d40c02a39e0fcf26eacd70f2ae33",
+    "rust-star/runtime/src/routed_prefill.metal": "78722daa500da63d25278d4eff97460f6c793d076515597a13ae9f39845a939d",
+    "rust-star/runtime/src/attention_output_half.metal": "e26a8cffc83af3b350dcf78f1d1dde7eb10d1ed0247002f99bed1d085ea55ab7",
+    "metal/dsv4_hc.metal": "7ba6007b9212331ba2e737326432fa9ac76671e9875a8dae84b8fd28be78360c",
+    "metal/cpy.metal": "88d77cb71d83295be4097f2b820f60daac3bbbc75e1d4caf68327727be382ec4"
+  },
+  "files": {
+    "plan.json": "a0782673e56929a3a0d884e480c858b4139980fd14f398c59ab8b0771de6922d",
+    "prepare.py": "230caacd793deeae3b41f8f1497e702900c3291930269d614dada5a425e390fb",
+    "prepare-audits.py": "552cf11210bd026d7f3ef5430812f2a76539c4aeb86e59f676eaae087ebabb1b",
+    "prepare-protocol.py": "06bbd7c6d186fbeb505eadd1c5d3b94a120cc13da5fb0e27c877bfb60dcbdcc0",
+    "protocol-source-edits.json": "0aa42e6c969bd99c3756e53339ede158f7a60f1a50c8592a1430bd1b4b87fd18",
+    "protocol-derivation.json": "83c20f117ce7092140bf00dba38c8ccca99b8451ff63e983b6fa907979b92d18",
+    "probe.m": "1277b369b3494b5f067e84c6e360b6264705389439f55acc770d3e6f2df5c46e",
+    "probe": "86e3e99173123557a83dc1ffd9968d952dfb9ff78136b9c54d1d7a616b8578f8",
+    "source-edits.json": "95cb920642d2c23129ec8f3950142d6ac850648a9e71611bfacc67f6934fb2d2",
+    "source-audit.json": "5dd16ef174fec3c0f5f6bd4b8268c53a9e20e03e3ac4297ae58b3d2d1cd0009b",
+    "candidate.metal": "11efdf88adca3641f84f7b545a571d396c7c9fbfd8cc356ae5ed56117ce3928b",
+    "combined.metal": "2faa0a426c326869029df11f6ca582766a114d632d6ab4688f00f28459693aa1",
+    "arguments.h": "e978acdc2451de3955235da3919f0600fc6f91b6f154615bf4fa35e806e84630",
+    "production-arguments.m": "58e4b6faf7012eb7f87133e6414afccb11a30c61a0b66e7003725da75d1c1a29",
+    "production-encoding.m": "e0d408bb00d91a0675f53e39ba797d4671778aaf208ba59ca647733a36b83822",
+    "audit.py": "61b4c10ab62aa5f94992ba92b3e11ca4aa8220180dbffdfe595036acc745784a",
+    "audit-derivation.json": "dd6cb720d23814aecddaa1411d71f34bb067c2f228023b650e6fcb2e78e2d529",
+    "audit-edges.py": "09bb2fbe33ce85808135da71fe57d5993a63a0d4bcb9fb3b2d862990bc2abd13",
+    "run.py": "787388752576ede45a7e983a1cf18a57bb15792f9a9bc23423ceae85eec4e50c",
+    "build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "build-status.json": "29d20b9d406ad0d46e2c7a854a57ba4c17c4931b034c45ad5796c0c6c309a16b",
+    "toolchain.json": "ec95da2d1f679781ac39f61884aed2dbfe809788668fed81a578b8e95f19e610"
+  }
+}

@@ -18,6 +18,59 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-12 — Close longer median protocol; routed-half remains unselected
+
+- All five frozen runs completed, 23,015,768,064 exact FP16 comparisons,
+  including 4,896,374,784 direct candidate/original comparisons. All six initial
+  A/A cells pass, but mixed session 0 case 2 fails BA neutrality (0.989395)
+  and session 1 case 2 fails arena neutrality (0.989549). No samples excluded.
+- Candidate also misses every per-cell speed gate and the overall <0.95 gate
+  (descriptive paired median 0.984955). Failed mixed controls prevent a reliable
+  gain claim. No runtime integration, threshold change or rescue rerun.
+- Portable report rust-star/reports/routed-half-median-abe52d80/README.md
+  verifies 83 artifacts, full kernel/protocol inverse, raw medians and all gates.
+  Verification: .work/routed-half-median-verify-1.log. All 42 runtime sources
+  remain unchanged. GPU session 52217 completed successfully and is drained.
+- Next: fresh normal/profiled 32K/128 full C0 for the current Rust 1.74 build,
+  under frozen inputs and source pins, then a distinct profile-led hypothesis.
+  The previous 4K bootstrap and both routed-half studies stay closed.
+
+## 2026-09-12 — Longer-window neutral controls pass; candidate comparison active
+
+- Fresh edges and both predeclared A/A sessions pass. All six neutral cells
+  satisfy every unchanged median/order/arena/dispersion threshold; all 72
+  pairs and output checks are retained. This establishes the new protocol's
+  initial neutral screen, not a candidate or engine improvement.
+- Mixed session 0 began 06:58:49 UTC under the same runner, session 52217.
+  Two full sessions interleave contemporary A/A and candidate comparisons;
+  finish both before evaluating candidate selection. Source and scripts stay
+  frozen; no concurrent GPU or heavy compilation work.
+- Result-independent package/report/verifier tools are prepared in the work
+  directory. They also invert the entire protocol change to the closed prior
+  screen and prove identical kernels and thresholds. Execute them only after
+  the running block and final source pins complete.
+
+## 2026-09-12 — Start a fresh longer median-based timing protocol
+
+- The failed mean-of-three screen is closed at
+  abe52d805638380df2184321e68044d0ef9ae924. Its verified report and every raw
+  sample remain unchanged; milestone-completion.json records closure.
+- New attempt: .work/routed-half-median-abe52d80/. Kernel and combined Metal
+  sources are byte-identical to the first screen. Exactness cases, pair orders,
+  arena schedule and all neutral/candidate thresholds are unchanged.
+- Fixed change before compilation: eight conditioning and twelve measured
+  complete chains per role; median of the twelve GPU command intervals is the
+  primary slot estimate. Keep the arithmetic mean as descriptive data and
+  preserve every raw interval. Explicit script-edit ledgers invert the entire
+  harness/auditor/runner changes; new source/plan/build hashes are frozen.
+- Clang harness build passes. Fresh edge session 0 began 06:53:09 UTC, exec
+  session 52217. Then both predetermined A/A sessions must pass before any
+  candidate timing. Read active-run.json, execution.log and phase status files;
+  no concurrent GPU/heavy compile and no changes to frozen runtime/scripts.
+- This is a new measurement protocol, not a rerun or reclassification of the
+  prior failed study. Runtime remains unchanged. Close the full decision and
+  continue toward C0/whole-engine evidence only if local selection succeeds.
+
 ## 2026-09-12 — Close routed-input screen after failed A/A neutrality
 
 - Edge checks pass all 16 cases and 64,536,576 FP16 words. Both predetermined
@@ -5124,12 +5177,13 @@ Next:
   Report rust-star/reports/routed-half-neutral-24c5d03e/README.md verifies 67
   artifacts and 7,916,273,664 FP16 comparisons (includes A/A). Candidate timing
   never ran. Do not make a kernel speed claim from this failed control screen.
-- NEXT: a new prospective protocol with 8 conditioning/12 measured complete
-  chains and median slot estimates, preserving the same neutral and candidate
-  criteria. Fresh A/A must pass before candidate timing. No GPU work is active;
-  never rerun or reclassify the previous failed data to satisfy a threshold.
-  Full-model C0 and whole-engine evidence remain required after local selection.
-  Keep 256K paused, the oracle immutable and publication deferred.
+- COMPLETE: longer median protocol, 83 verified artifacts and 23,015,768,064
+  exact FP16 comparisons. Initial controls pass; two mixed neutral cells and
+  candidate speed gates fail. No reliable gain or integration. Report:
+  rust-star/reports/routed-half-median-abe52d80/README.md. No GPU job active.
+- NEXT: freeze current Rust 1.74 normal/profiled 32K/128 full-C0 validation;
+  host compatibility alone does not establish full-model exactness. Continue
+  profile-driven work afterward. Keep 256K paused and publication deferred.
 
 - COMPLETE: attention-output whole-engine milestone. Candidate 4ced6ee8 is
   retained. Report rust-star/reports/attention-output-engine-4ced6ee8/README.md.
@@ -6051,18 +6105,13 @@ Next:
 
 ## Immediate Next Actions
 
-1. Commit the verified failed routed-half neutral screen and record closure.
-   No GPU work remains; runtime source is unchanged at 24c5d03e. Preserve all
-   existing raw data and its original mean-of-three decision.
-2. Freeze a new bounded protocol: 8 conditioning and 12 measured chains per
-   role, median estimate, the same exact edge/control cases and unchanged
-   neutral/candidate thresholds. Run fresh edges and both A/A sessions before
-   any candidate comparison. Preserve failures and do not add discretionary runs.
-3. If selected, freeze a separate current-baseline integration/full-C0/engine
-   plan. Otherwise close the hypothesis and continue justified work. Do not
-   infer an engine improvement from local kernels or synthetic outputs.
-4. Continue the charter's remaining initial scope milestone by milestone;
-   keep no-publication, immutable-oracle and paused-256K boundaries intact.
+1. Both routed-half studies are closed without selection. Preserve all failed
+   controls, speed gates and samples; no integration or retrospective rescue.
+2. Freeze and run normal/profiled full 32K/128 C0 for current Rust 1.74 source
+   and executable. Use immutable oracle-v5 fixtures and inspect every FP32 word.
+3. Continue a distinct profile-led hypothesis with prospective gates. The 1K
+   bootstrap working-set idea is unmeasured; no implementation is accepted.
+4. Continue the charter's initial scope without publication or resuming 256K.
 
 ## Entries
 

@@ -1,0 +1,12 @@
+{
+  "audit.py": {
+    "before_sha256": "cea4a6baf74c645b2deb3bb5c8d3122eb5f742c2747a7e04ffd325d8bdee0381",
+    "after_sha256": "61b4c10ab62aa5f94992ba92b3e11ca4aa8220180dbffdfe595036acc745784a",
+    "inverse_exact": true
+  },
+  "audit-edges.py": {
+    "before_sha256": "65617f65e200b112d18cf3d4d85e3fd0c950bfbbd2b550ae18551e21af1e18c6",
+    "after_sha256": "09bb2fbe33ce85808135da71fe57d5993a63a0d4bcb9fb3b2d862990bc2abd13",
+    "inverse_exact": true
+  }
+}

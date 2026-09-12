@@ -1,0 +1,156 @@
+{
+  "schema": "rust-star-routed-half-median-protocol-v2",
+  "created_utc": "2026-09-12T06:52:44.378521+00:00",
+  "preparation_only_until": "Prior failed neutral screen is completely reported and closed; no overlapping GPU work.",
+  "profile_sha256": "4b5fa448b6c342f00c1e3b11ed4f28df43a2fba9011af3bde693dfdc1f4da79e",
+  "profile_runtime": "c7adfb22706d5a5883d8a251a3a9046a2c8e587b",
+  "target": "tail/routed_gate_up",
+  "target_gpu_ms": 30344.99958480498,
+  "target_stage_share": 0.17201897819723813,
+  "hypothesis": "Convert each normalized FFN input to FP16 once before the existing routed fused gate/up kernel. Preserve every quantized weight load, dequantization, MMA, clamp, SwiGLU and output-conversion operation; replace only FP32 input loads plus repeated half casts with FP16 loads. Include conversion and map dispatches in complete chain timing.",
+  "runtime_scope": "Later integration, if selected: only nonzero native continuation chunks in the existing tail. Reuse existing attention-input half scratch after its last reader if ownership/bounds proof passes. Initial prefix, bootstrap, decode and imported kernels unchanged.",
+  "shape": {
+    "rows": 4096,
+    "width": 4096,
+    "experts": 256,
+    "used": 6,
+    "output_width": 2048,
+    "quant": "IQ2_XXS",
+    "extra_half_bytes": 33554432
+  },
+  "edge_rows": [
+    1,
+    31,
+    32,
+    33,
+    63,
+    64,
+    65,
+    1024
+  ],
+  "edge_patterns": [
+    "uniform routes/random input",
+    "skewed routes/FP16 rounding boundaries"
+  ],
+  "sessions": [
+    0,
+    1
+  ],
+  "cases": [
+    "uniform all-expert occupancy",
+    "skewed 32-expert occupancy",
+    "all-expert occupancy with FP16 rounding boundaries"
+  ],
+  "pair_orders": [
+    "AB",
+    "BA",
+    "BA",
+    "AB",
+    "AB",
+    "BA",
+    "BA",
+    "AB",
+    "AB",
+    "BA",
+    "BA",
+    "AB"
+  ],
+  "warmup_pairs": 2,
+  "conditioning_dispatches": 8,
+  "samples_per_warmed_slot": 12,
+  "aa_only_pairs_per_case": 12,
+  "mixed_pairs_per_protocol_per_case": 12,
+  "neutral_screen": {
+    "per_shape_per_session": {
+      "median_first_over_second_max_abs_deviation": 0.01,
+      "ab_and_ba_role_ratio_medians_max_abs_deviation": 0.01,
+      "first_over_second_ratio_mad_max": 0.01,
+      "minimum_pairs_within_3_percent": 10,
+      "active_arena_subgroup_role_ratio_max_abs_deviation": 0.01
+    },
+    "pass_rule": "Every contemporary aa-control shape in both predeclared fresh processes must satisfy every inherited neutral-protocol criterion. Always preserve both sessions; stop on execution/correctness failure. No retuning or extra repeats."
+  },
+  "candidate_selection": {
+    "all_exact_outputs_and_guards": true,
+    "every_case_session_order_median_ratio_below": 0.98,
+    "overall_median_ratio_below": 0.95
+  },
+  "exactness": "All FP16 routed intermediate words must match a protected original-kernel reference, with finite/nondegenerate values, whole-buffer guards, CPU map validation and CPU FP16 conversion checks. Include every candidate conversion in chain timing. Recheck the original protected reference after each role; use one active arena for both timed roles and alternate active arena. Identical pipeline objects for contemporary A/A controls. Protected-reference and active output bodies use distinct FP16 NaN poison patterns, so missing writes cannot pass by matching identical sentinels; external guards stay unchanged.",
+  "failure_policy": "Preserve every attempt and both predetermined sessions. Execution/exactness/neutrality failure stops selection and requires concrete diagnosis; no silent retries or threshold relaxation. No runtime integration without exact local evidence and selection. No engine gain follows from a local result.",
+  "later_whole_engine_requirement": "Freeze accepted baseline source/executable and a separate integration/full-C0/whole-engine plan before runtime measurement. At least normal full 32K/128 C0 and paired unprofiled engine evidence before retention.",
+  "no_push": true,
+  "no_256k": true,
+  "probe_schema": "rust-star-routed-half-median-same-arena-v2",
+  "shape_orders": [
+    [
+      0,
+      1,
+      2
+    ],
+    [
+      2,
+      1,
+      0
+    ]
+  ],
+  "case_seeds": [
+    88175377,
+    88175378,
+    88175379
+  ],
+  "a_buffers": [
+    "a",
+    "a",
+    "b",
+    "b",
+    "a",
+    "a",
+    "b",
+    "b",
+    "a",
+    "a",
+    "b",
+    "b"
+  ],
+  "protocols": {
+    "aa-control": {
+      "warm": 8,
+      "samples": 12
+    },
+    "candidate": {
+      "warm": 8,
+      "samples": 12
+    }
+  },
+  "timed_cases": [
+    0,
+    1,
+    2
+  ],
+  "edge_sessions": [
+    0
+  ],
+  "baseline_sequence": [
+    "route_map",
+    "routed_gate_up_float_input"
+  ],
+  "candidate_sequence": [
+    "route_map",
+    "convert_input_half",
+    "routed_gate_up_half_input"
+  ],
+  "timing_scope": "Whole map/conversion/gate-up chain, with the candidate conversion after the map to match future production placement inside the existing routed_gate_up profile interval.",
+  "slot_estimator": "median",
+  "protocol_change": {
+    "prior_commit": "abe52d805638380df2184321e68044d0ef9ae924",
+    "prior_manifest_sha256": "152eaac65d16d1d6b9f2fa17f1be4b3edc98df5a3cf3d1e89a5c590cc15d9f64",
+    "reason": "Identical-kernel mean-of-three slots contain occasional large duration spikes and fail five of six neutral cells.",
+    "changes": [
+      "8 conditioning chains instead of 4",
+      "12 measured chains instead of 3",
+      "Median slot estimate; preserve every raw command and arithmetic mean as descriptive data"
+    ],
+    "thresholds_unchanged": true,
+    "no_reclassification_of_prior_data": true
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "passed": true,
+  "source_scope": "Source-only preparation; no GPU compilation/execution or runtime edits",
+  "original_kernel_sha256": "78722daa500da63d25278d4eff97460f6c793d076515597a13ae9f39845a939d",
+  "sources": {
+    "rust-star/runtime/src/moe_output_prefix.metal": "fd071235d773bfa72a870df223fac3fdb5ce128e51ac5bd10a3abb503184aa03",
+    "metal/flash_attn.metal": "095aa88594e1d25e6c23e9bdf7473de8c5de39bc2e2b98c049b48229b309996d",
+    "metal/dense.metal": "fc1d031785fe3c601b00f0c34b24ef8325ed233bc86cdd2fc224e7c6d5fcff6f",
+    "metal/glu.metal": "59281e30a27cc2eb618800b6e53a57e234f65f1a1e680d6267d9139e1a06b627",
+    "metal/moe.metal": "81090179e8d41c15efb48279c023c2b66935d40c02a39e0fcf26eacd70f2ae33",
+    "rust-star/runtime/src/routed_prefill.metal": "78722daa500da63d25278d4eff97460f6c793d076515597a13ae9f39845a939d",
+    "rust-star/runtime/src/attention_output_half.metal": "e26a8cffc83af3b350dcf78f1d1dde7eb10d1ed0247002f99bed1d085ea55ab7",
+    "metal/dsv4_hc.metal": "7ba6007b9212331ba2e737326432fa9ac76671e9875a8dae84b8fd28be78360c",
+    "metal/cpy.metal": "88d77cb71d83295be4097f2b820f60daac3bbbc75e1d4caf68327727be382ec4"
+  },
+  "host_sha256": "b5aaf2ca003f0d6ee102a75a44fd14d7c6507461813c56067d648e3cc876cd6f",
+  "candidate_sha256": "11efdf88adca3641f84f7b545a571d396c7c9fbfd8cc356ae5ed56117ce3928b",
+  "combined_sha256": "2faa0a426c326869029df11f6ca582766a114d632d6ab4688f00f28459693aa1",
+  "arguments_sha256": "e978acdc2451de3955235da3919f0600fc6f91b6f154615bf4fa35e806e84630",
+  "inverse_restores_entire_kernel": true,
+  "all_arithmetic_and_dispatch_grid_unchanged": true
+}

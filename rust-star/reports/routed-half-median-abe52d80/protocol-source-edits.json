@@ -1,0 +1,90 @@
+{
+  "probe.m": [
+    {
+      "before": "static NSDictionary*slot(",
+      "after": "static int compare_double(const void *a,const void *b) { double x=*(const double*)a,y=*(const double*)b;return (x>y)-(x<y); }\nstatic NSDictionary*slot(",
+      "count": 1
+    },
+    {
+      "before": "int warm=4,samples=3;",
+      "after": "int warm=8,samples=12;",
+      "count": 1
+    },
+    {
+      "before": "total=0;NSMutableArray*raw=",
+      "after": "total=0;double measured[12];NSMutableArray*raw=",
+      "count": 1
+    },
+    {
+      "before": "if(i>=warm)total+=ms;",
+      "after": "if(i>=warm){total+=ms;measured[i-warm]=ms;}",
+      "count": 1
+    },
+    {
+      "before": " return @{@\"candidate_variant\"",
+      "after": " qsort(measured,12,sizeof(double),compare_double);double estimate=(measured[5]+measured[6])/2.0;\n return @{@\"candidate_variant\"",
+      "count": 1
+    },
+    {
+      "before": "@\"mean_gpu_ms\"",
+      "after": "@\"median_gpu_ms\"",
+      "count": 3
+    },
+    {
+      "before": "@\"median_gpu_ms\":@(total/samples)",
+      "after": "@\"median_gpu_ms\":@(estimate),@\"arithmetic_mean_gpu_ms\":@(total/samples)",
+      "count": 1
+    },
+    {
+      "before": "rust-star-routed-half-same-arena-v1",
+      "after": "rust-star-routed-half-median-same-arena-v2",
+      "count": 1
+    },
+    {
+      "before": "@\"conditioning_dispatches\":@4,@\"samples_per_warmed_slot\":@3",
+      "after": "@\"conditioning_dispatches\":@8,@\"samples_per_warmed_slot\":@12,@\"slot_estimator\":@\"median\"",
+      "count": 1
+    }
+  ],
+  "audit.py": [
+    {
+      "before": "conditioning_dispatches=4,samples_per_warmed_slot=3,",
+      "after": "conditioning_dispatches=8,samples_per_warmed_slot=12,slot_estimator='median',",
+      "count": 1
+    },
+    {
+      "before": "expected=sum(c['gpu_ms'] for c in commands[cfg['warm']:])/cfg['samples']",
+      "after": "expected=med(c['gpu_ms'] for c in commands[cfg['warm']:])\n      assert abs(sum(c['gpu_ms'] for c in commands[cfg['warm']:])/cfg['samples']-r['arithmetic_mean_gpu_ms'])<1e-9",
+      "count": 1
+    },
+    {
+      "before": "'mean_gpu_ms'",
+      "after": "'median_gpu_ms'",
+      "count": 2
+    }
+  ],
+  "audit-edges.py": [
+    {
+      "before": "conditioning_dispatches=4,samples_per_warmed_slot=3,",
+      "after": "conditioning_dispatches=8,samples_per_warmed_slot=12,slot_estimator='median',",
+      "count": 1
+    }
+  ],
+  "run.py": [
+    {
+      "before": "prior=root/'rust-star/.work/autonomous-prefill-a46dfe8b/wide-bootstrap-router-bound'",
+      "after": "prior=root/'rust-star/.work/routed-half-prefill-c7adfb22'",
+      "count": 1
+    },
+    {
+      "before": "assert read(prior/'completion-pins.json')['passed'] and read(prior/'engine/audit.json')['execution_passed']",
+      "after": "assert read(prior/'execution-complete.json')['passed'] and not read(prior/'execution-complete.json')['selected']\nassert not (prior/'timing').exists()",
+      "count": 1
+    },
+    {
+      "before": "'plan.json','prepare.py','prepare-audits.py'",
+      "after": "'plan.json','prepare.py','prepare-audits.py','prepare-protocol.py','protocol-source-edits.json','protocol-derivation.json'",
+      "count": 1
+    }
+  ]
+}

@@ -1,0 +1,396 @@
+{
+  "passed": true,
+  "correctness_passed": true,
+  "overall_candidate_median": 0.984954955017839,
+  "fp16_words_compared": 15099494400,
+  "sessions": 2,
+  "total_pairs": 144,
+  "contemporary_null_screen_pass": false,
+  "candidate_speed_criteria_pass": false,
+  "candidate_selected_for_later_c0": false,
+  "statistics": [
+    {
+      "session": 0,
+      "case": 0,
+      "rows": 4096,
+      "protocol": "aa-control",
+      "pairs": 12,
+      "first_second_median": 1.000510014701897,
+      "first_second_mad": 0.005456811081788415,
+      "ab_role_ratio_median": 1.0000580443187657,
+      "ba_role_ratio_median": 1.000510014701897,
+      "active_arena_role_medians": {
+        "a": 0.9961601292390474,
+        "b": 1.0045622075031946
+      },
+      "pairs_within_3_percent": 12,
+      "minimum_first_second": 0.9845332530337798,
+      "maximum_first_second": 1.0160439339957597,
+      "role_ratio_median": 1.000510014701897,
+      "a_median_gpu_ms": 89.4452812497093,
+      "b_median_gpu_ms": 89.5217604163463,
+      "gates": {
+        "first_second": true,
+        "ab_ba": true,
+        "active_arena": true,
+        "mad": true,
+        "pair_dispersion": true
+      },
+      "null_screen_pass": true,
+      "candidate_screen_pass": null,
+      "ab_faster_pairs": 3,
+      "ba_faster_pairs": 3
+    },
+    {
+      "session": 0,
+      "case": 0,
+      "rows": 4096,
+      "protocol": "candidate",
+      "pairs": 12,
+      "first_second_median": 0.9962697718775297,
+      "first_second_mad": 0.016919267229112855,
+      "ab_role_ratio_median": 0.9808000757183326,
+      "ba_role_ratio_median": 0.9838905946634016,
+      "active_arena_role_medians": {
+        "a": 0.9766213176887619,
+        "b": 0.9835925005455708
+      },
+      "pairs_within_3_percent": 9,
+      "minimum_first_second": 0.9628268719424787,
+      "maximum_first_second": 1.033067980653762,
+      "role_ratio_median": 0.9821672196706901,
+      "a_median_gpu_ms": 89.83906250000473,
+      "b_median_gpu_ms": 87.91752083334359,
+      "gates": {
+        "ab_median": false,
+        "ba_median": false
+      },
+      "null_screen_pass": null,
+      "candidate_screen_pass": false,
+      "ab_faster_pairs": 6,
+      "ba_faster_pairs": 6
+    },
+    {
+      "session": 0,
+      "case": 1,
+      "rows": 4096,
+      "protocol": "aa-control",
+      "pairs": 12,
+      "first_second_median": 0.9989041090307196,
+      "first_second_mad": 0.002859323867081154,
+      "ab_role_ratio_median": 1.0045905800136778,
+      "ba_role_ratio_median": 0.9990827150654416,
+      "active_arena_role_medians": {
+        "a": 0.9989041090307196,
+        "b": 1.0045905800136778
+      },
+      "pairs_within_3_percent": 12,
+      "minimum_first_second": 0.9860513629682084,
+      "maximum_first_second": 1.0137148563875418,
+      "role_ratio_median": 1.0003566192816338,
+      "a_median_gpu_ms": 88.7925937502132,
+      "b_median_gpu_ms": 88.9814062500136,
+      "gates": {
+        "first_second": true,
+        "ab_ba": true,
+        "active_arena": true,
+        "mad": true,
+        "pair_dispersion": true
+      },
+      "null_screen_pass": true,
+      "candidate_screen_pass": null,
+      "ab_faster_pairs": 2,
+      "ba_faster_pairs": 4
+    },
+    {
+      "session": 0,
+      "case": 1,
+      "rows": 4096,
+      "protocol": "candidate",
+      "pairs": 12,
+      "first_second_median": 1.0037190554393236,
+      "first_second_mad": 0.014362944550099732,
+      "ab_role_ratio_median": 0.9846006149131011,
+      "ba_role_ratio_median": 0.9871992124560522,
+      "active_arena_role_medians": {
+        "a": 0.9763591226097542,
+        "b": 0.989685220273335
+      },
+      "pairs_within_3_percent": 10,
+      "minimum_first_second": 0.9653623411032994,
+      "maximum_first_second": 1.0376310195234815,
+      "role_ratio_median": 0.9853216839479808,
+      "a_median_gpu_ms": 88.85401041652585,
+      "b_median_gpu_ms": 87.52972916659019,
+      "gates": {
+        "ab_median": false,
+        "ba_median": false
+      },
+      "null_screen_pass": null,
+      "candidate_screen_pass": false,
+      "ab_faster_pairs": 6,
+      "ba_faster_pairs": 5
+    },
+    {
+      "session": 0,
+      "case": 2,
+      "rows": 4096,
+      "protocol": "aa-control",
+      "pairs": 12,
+      "first_second_median": 0.9936736005283476,
+      "first_second_mad": 0.005796285352085595,
+      "ab_role_ratio_median": 1.0041717056934167,
+      "ba_role_ratio_median": 0.9893949681277304,
+      "active_arena_role_medians": {
+        "a": 0.9982304012470309,
+        "b": 0.9955272294934178
+      },
+      "pairs_within_3_percent": 12,
+      "minimum_first_second": 0.9788532317806206,
+      "maximum_first_second": 1.007853704184148,
+      "role_ratio_median": 0.9982304012470309,
+      "a_median_gpu_ms": 89.69937500023661,
+      "b_median_gpu_ms": 89.48189583338717,
+      "gates": {
+        "first_second": true,
+        "ab_ba": false,
+        "active_arena": true,
+        "mad": true,
+        "pair_dispersion": true
+      },
+      "null_screen_pass": false,
+      "candidate_screen_pass": null,
+      "ab_faster_pairs": 2,
+      "ba_faster_pairs": 5
+    },
+    {
+      "session": 0,
+      "case": 2,
+      "rows": 4096,
+      "protocol": "candidate",
+      "pairs": 12,
+      "first_second_median": 1.001516597123005,
+      "first_second_mad": 0.02322850697840695,
+      "ab_role_ratio_median": 0.9707334810364203,
+      "ba_role_ratio_median": 0.9852451942732303,
+      "active_arena_role_medians": {
+        "a": 0.977073558816923,
+        "b": 0.9759835657132859
+      },
+      "pairs_within_3_percent": 8,
+      "minimum_first_second": 0.9666360918678012,
+      "maximum_first_second": 1.0657230016459627,
+      "role_ratio_median": 0.977073558816923,
+      "a_median_gpu_ms": 89.59437499993328,
+      "b_median_gpu_ms": 87.594364583083,
+      "gates": {
+        "ab_median": true,
+        "ba_median": false
+      },
+      "null_screen_pass": null,
+      "candidate_screen_pass": false,
+      "ab_faster_pairs": 6,
+      "ba_faster_pairs": 6
+    },
+    {
+      "session": 1,
+      "case": 2,
+      "rows": 4096,
+      "protocol": "aa-control",
+      "pairs": 12,
+      "first_second_median": 1.005183390147987,
+      "first_second_mad": 0.009833950865668073,
+      "ab_role_ratio_median": 0.9907025382177488,
+      "ba_role_ratio_median": 0.9918046978732076,
+      "active_arena_role_medians": {
+        "a": 0.996339879570503,
+        "b": 0.9895488787889999
+      },
+      "pairs_within_3_percent": 12,
+      "minimum_first_second": 0.9823741821245923,
+      "maximum_first_second": 1.0244015530286124,
+      "role_ratio_median": 0.9907025382177488,
+      "a_median_gpu_ms": 89.8345104164946,
+      "b_median_gpu_ms": 89.43036458367715,
+      "gates": {
+        "first_second": true,
+        "ab_ba": true,
+        "active_arena": false,
+        "mad": true,
+        "pair_dispersion": true
+      },
+      "null_screen_pass": false,
+      "candidate_screen_pass": null,
+      "ab_faster_pairs": 5,
+      "ba_faster_pairs": 4
+    },
+    {
+      "session": 1,
+      "case": 2,
+      "rows": 4096,
+      "protocol": "candidate",
+      "pairs": 12,
+      "first_second_median": 1.0027267334682146,
+      "first_second_mad": 0.018671596500198284,
+      "ab_role_ratio_median": 0.9853493524620389,
+      "ba_role_ratio_median": 0.9794752267789913,
+      "active_arena_role_medians": {
+        "a": 0.9855666821457024,
+        "b": 0.9783402160357941
+      },
+      "pairs_within_3_percent": 10,
+      "minimum_first_second": 0.9679924310280047,
+      "maximum_first_second": 1.0235305229217937,
+      "role_ratio_median": 0.9832966007842989,
+      "a_median_gpu_ms": 90.03654166690467,
+      "b_median_gpu_ms": 88.39114583338414,
+      "gates": {
+        "ab_median": false,
+        "ba_median": true
+      },
+      "null_screen_pass": null,
+      "candidate_screen_pass": false,
+      "ab_faster_pairs": 6,
+      "ba_faster_pairs": 6
+    },
+    {
+      "session": 1,
+      "case": 1,
+      "rows": 4096,
+      "protocol": "aa-control",
+      "pairs": 12,
+      "first_second_median": 0.9963994374127072,
+      "first_second_mad": 0.0064630710429506855,
+      "ab_role_ratio_median": 1.005761491108732,
+      "ba_role_ratio_median": 0.9980254244328217,
+      "active_arena_role_medians": {
+        "a": 1.004598002906155,
+        "b": 0.9973526787192823
+      },
+      "pairs_within_3_percent": 12,
+      "minimum_first_second": 0.9826667631226658,
+      "maximum_first_second": 1.0144130123970734,
+      "role_ratio_median": 1.0016268092904426,
+      "a_median_gpu_ms": 89.30206249965522,
+      "b_median_gpu_ms": 89.33404166691616,
+      "gates": {
+        "first_second": true,
+        "ab_ba": true,
+        "active_arena": true,
+        "mad": true,
+        "pair_dispersion": true
+      },
+      "null_screen_pass": true,
+      "candidate_screen_pass": null,
+      "ab_faster_pairs": 1,
+      "ba_faster_pairs": 3
+    },
+    {
+      "session": 1,
+      "case": 1,
+      "rows": 4096,
+      "protocol": "candidate",
+      "pairs": 12,
+      "first_second_median": 1.0023004461738714,
+      "first_second_mad": 0.014580298678551817,
+      "ab_role_ratio_median": 0.9865907904945099,
+      "ba_role_ratio_median": 0.98296282193633,
+      "active_arena_role_medians": {
+        "a": 0.9869600906993101,
+        "b": 0.9825935217315298
+      },
+      "pairs_within_3_percent": 10,
+      "minimum_first_second": 0.9729379155093854,
+      "maximum_first_second": 1.040912770342778,
+      "role_ratio_median": 0.9855314403320314,
+      "a_median_gpu_ms": 89.50571875038804,
+      "b_median_gpu_ms": 88.00484374933149,
+      "gates": {
+        "ab_median": false,
+        "ba_median": false
+      },
+      "null_screen_pass": null,
+      "candidate_screen_pass": false,
+      "ab_faster_pairs": 6,
+      "ba_faster_pairs": 6
+    },
+    {
+      "session": 1,
+      "case": 0,
+      "rows": 4096,
+      "protocol": "aa-control",
+      "pairs": 12,
+      "first_second_median": 0.9959826755830243,
+      "first_second_mad": 0.006999766494935777,
+      "ab_role_ratio_median": 1.00403628251643,
+      "ba_role_ratio_median": 0.9998124014348302,
+      "active_arena_role_medians": {
+        "a": 0.996284543366863,
+        "b": 1.0060464517155319
+      },
+      "pairs_within_3_percent": 12,
+      "minimum_first_second": 0.9754397698216718,
+      "maximum_first_second": 1.0298726884821845,
+      "role_ratio_median": 1.00403628251643,
+      "a_median_gpu_ms": 85.00976041659669,
+      "b_median_gpu_ms": 84.975927083633,
+      "gates": {
+        "first_second": true,
+        "ab_ba": true,
+        "active_arena": true,
+        "mad": true,
+        "pair_dispersion": true
+      },
+      "null_screen_pass": true,
+      "candidate_screen_pass": null,
+      "ab_faster_pairs": 2,
+      "ba_faster_pairs": 3
+    },
+    {
+      "session": 1,
+      "case": 0,
+      "rows": 4096,
+      "protocol": "candidate",
+      "pairs": 12,
+      "first_second_median": 1.000228094950245,
+      "first_second_mad": 0.013411487340461992,
+      "ab_role_ratio_median": 0.989477638818161,
+      "ba_role_ratio_median": 0.9879865861337978,
+      "active_arena_role_medians": {
+        "a": 0.9876720808497583,
+        "b": 0.9885664712332662
+      },
+      "pairs_within_3_percent": 10,
+      "minimum_first_second": 0.9422183019572338,
+      "maximum_first_second": 1.040345151356124,
+      "role_ratio_median": 0.9885664712332662,
+      "a_median_gpu_ms": 84.66973958365998,
+      "b_median_gpu_ms": 83.50178125010643,
+      "gates": {
+        "ab_median": false,
+        "ba_median": false
+      },
+      "null_screen_pass": null,
+      "candidate_screen_pass": false,
+      "ab_faster_pairs": 5,
+      "ba_faster_pairs": 5
+    }
+  ],
+  "diagnostics": [],
+  "output_checksums": {
+    "0": 6400013005441361797,
+    "1": 12255564277199589984,
+    "2": 1654504232328186561
+  },
+  "runtime_changed": false,
+  "engine_speedup_claim": false,
+  "files": {
+    "session-0/probe.jsonl": "1346566edb79a43cf184ac07d63b7d10d0f2cd161416bf47b643fcf674a1787c",
+    "session-1/probe.jsonl": "d21c8177c84285343e5a4700d3c822cba5ef7e2dcdde1a61653bb2d6f4a3968d"
+  },
+  "protocol_inputs": {
+    "plan.json": "a0782673e56929a3a0d884e480c858b4139980fd14f398c59ab8b0771de6922d",
+    "probe.m": "1277b369b3494b5f067e84c6e360b6264705389439f55acc770d3e6f2df5c46e",
+    "edge-audit.json": "745d6566e85cfbadcf5c739f1c69bf35fe62b1bbc913a884bf0f5ff17e49ee12"
+  }
+}

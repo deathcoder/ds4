@@ -1,0 +1,9 @@
+{
+  "mode": "timing",
+  "session": 1,
+  "exit_code": 0,
+  "started_utc": "2026-09-12T07:03:37.839500+00:00",
+  "finished_utc": "2026-09-12T07:08:23.060734+00:00",
+  "elapsed_seconds": 285.21969991699996,
+  "probe_sha256": "86e3e99173123557a83dc1ffd9968d952dfb9ff78136b9c54d1d7a616b8578f8"
+}

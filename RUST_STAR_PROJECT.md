@@ -555,6 +555,13 @@ candidate timing never runs and runtime source stays at `24c5d03e`. Report
 kernel inverse and every raw control. Establish a fresh bounded timing protocol
 before drawing any candidate speed conclusion; no engine gain is established.
 
+A separate median-of-twelve protocol passes initial A/A controls but fails two
+mixed control cells and the candidate speed thresholds. All 23,015,768,064
+synthetic FP16 comparisons pass; the runtime remains unchanged. The verified
+83-artifact report is `rust-star/reports/routed-half-median-abe52d80/README.md`.
+No reliable speed gain or integration follows. Fresh full-model evidence for
+the Rust 1.74 build is next, before another profile-driven hypothesis.
+
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-09, native prefill through all 43 layers
 and the output head is C0 exact at 128K, with 128 exact full-logit decode steps
