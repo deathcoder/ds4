@@ -1,0 +1,1 @@
+{"phase":"observer generation before build/runtime edit","failure":"function-local marker occurs in four functions","correction":"scope ambiguous anchors to the selected boundary; exact inverse remains required"}

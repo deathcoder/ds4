@@ -1,0 +1,18 @@
+{
+  "created_utc": "2026-09-12T14:58:23.965634+00:00",
+  "reason": "The frozen Objective-C observer encodes its nil-command sentinel as NSUIntegerMax, not signed -1. Verified in a standalone CPU-only Foundation probe before examining pool trace results. This corrects representation only: every reused buffer still requires prior status4 (Completed).",
+  "before": "(-1 if i==0 else 4)",
+  "after": "(2**64-1 if i==0 else 4)",
+  "original_sha256": "f5795b978993f3378d2d4d21da07d4f48270ca7ad02c874f1c5c5809457b3e0f",
+  "corrected_sha256": "def28cd688e02ee43976b9c0fce3e7c09b1f73c155a15d0a2a67424d373b76b3",
+  "probe_sha256": "8d234a33cb57cb01c0482bbe96535e8be4a9a1b6e48d46a23c388726ebaa468a",
+  "probe_result": {
+    "no_prior_status": 18446744073709551615,
+    "NSUIntegerMax": 18446744073709551615
+  },
+  "runtime_changes": false,
+  "observer_changes": false,
+  "inference_repeats": 0,
+  "capacity_or_performance_threshold_changes": false,
+  "original_auditor_preserved": true
+}

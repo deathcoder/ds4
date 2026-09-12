@@ -1,0 +1,9 @@
+{
+  "name": "router-probe",
+  "args": [
+    "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/pool-1k-fcdfef5f/router-probe",
+    "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/pool-1k-fcdfef5f/ffn_router.metal"
+  ],
+  "exit_code": 0,
+  "log_sha256": "ba22f38863e5c891512eeb2ac7c29abe6d0c602263b2cf56d9dc38a4ef190ddf"
+}

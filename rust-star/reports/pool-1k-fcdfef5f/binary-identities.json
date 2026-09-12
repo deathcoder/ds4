@@ -1,0 +1,34 @@
+{
+  "baseline-rust-star": {
+    "sha256": "d8c3919ed98281b36d1f9446c243d94655f416ebaa1a144778c5893ffaea161e",
+    "bytes": 1426900248
+  },
+  "candidate-rust-star": {
+    "sha256": "eb50db2862c3fed2bb4e0c6245ec1095a75bb4e38a2e8a38516833ce5333c3ea",
+    "bytes": 1426936264
+  },
+  "diagnostic-rust-star": {
+    "sha256": "5bc5f84800b2aad2043b429367f86a3f6990752267efcf3b864fe4dbf40200f9",
+    "bytes": 1426956024
+  },
+  "observer-proof": {
+    "sha256": "6bfd5bda3a8a8e03b45e1ef93f189f3992b23a7fdda26a610e6b015b92a1029e",
+    "bytes": 55776
+  },
+  "pool-proof": {
+    "sha256": "3c782a5068daccc4116159c7ed11e63d2c7c6a7855561491dae0997aa820cfe5",
+    "bytes": 74216
+  },
+  "prior-default-rust-star": {
+    "sha256": "2bf77edb9886f4efa5d011cba963aaef7e2bf140db1b3a09c6193e76bdc77af4",
+    "bytes": 1427014368
+  },
+  "router-probe": {
+    "sha256": "6835a9cf522c16504800253ef94220711dd9513517f8dc3c532230effe7a1466",
+    "bytes": 52128
+  },
+  "status-representation": {
+    "sha256": "89fe31a335c69083dd5231391bccb8f335f8ee89a78751ea971d88256ff13b6b",
+    "bytes": 51240
+  }
+}

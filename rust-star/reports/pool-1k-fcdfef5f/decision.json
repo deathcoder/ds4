@@ -1,0 +1,10 @@
+{
+  "closed": true,
+  "utc": "2026-09-12T15:55:39.745266+00:00",
+  "retained": false,
+  "reason": "Failed unchanged engine gates: peak_rss_median",
+  "failed_gates": [
+    "peak_rss_median"
+  ],
+  "engine_runs": 12
+}

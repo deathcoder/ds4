@@ -1,0 +1,61 @@
+{
+  "criteria_pass": true,
+  "chunks": [
+    {
+      "frontier": 8192,
+      "bytes": 2392460785,
+      "labels": 105,
+      "tiles": 4,
+      "final_weak_scratch_bytes": 0
+    },
+    {
+      "frontier": 12288,
+      "bytes": 2409246193,
+      "labels": 105,
+      "tiles": 4,
+      "final_weak_scratch_bytes": 0
+    },
+    {
+      "frontier": 16384,
+      "bytes": 2426031601,
+      "labels": 105,
+      "tiles": 4,
+      "final_weak_scratch_bytes": 0
+    },
+    {
+      "frontier": 20480,
+      "bytes": 2442817009,
+      "labels": 105,
+      "tiles": 4,
+      "final_weak_scratch_bytes": 0
+    },
+    {
+      "frontier": 24576,
+      "bytes": 2459602417,
+      "labels": 105,
+      "tiles": 4,
+      "final_weak_scratch_bytes": 0
+    },
+    {
+      "frontier": 28672,
+      "bytes": 2476387825,
+      "labels": 105,
+      "tiles": 4,
+      "final_weak_scratch_bytes": 0
+    },
+    {
+      "frontier": 32768,
+      "bytes": 2493173233,
+      "labels": 105,
+      "tiles": 4,
+      "final_weak_scratch_bytes": 0
+    }
+  ],
+  "tiles": 28,
+  "snapshots": 119,
+  "checkouts": 2940,
+  "owner_cleanup_events": 28,
+  "max_unfinished_commands": 1,
+  "max_sampled_scratch_bytes": 2493173233,
+  "full_fp32_words": 16677120
+}

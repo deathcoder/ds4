@@ -600,6 +600,19 @@ with ownership/first-write proofs, a new prospective identity/capacity contract,
 fresh full C0 and unchanged engine/memory gates. Immediate object destruction
 must not be inferred from command completion alone.
 
+The subsequent explicit scratch-reuse candidate is rejected. It owns one
+105-buffer set per four-tile native bootstrap chunk, restores full zero/copy
+initial state after checked completion, and releases the owner at final/error
+exit. Persistent state and shader arithmetic remain unchanged. Three fresh
+full-C0 runs pass 50,031,360 exact FP32 words; the complete pool audit passes
+28 tiles/2,940 checkouts with a 2,493,173,233-byte logical peak. A documented
+unsigned nil-command sentinel correction preserves the original audit failure
+without changing runtime, ownership criteria or performance thresholds. All 12
+fixed engine runs complete: paired median prefill -10.243%, steady decode -0.005%, RSS +2.415%, peak memory footprint +11.663%. All accepted source/default restored.
+221-artifact verified report: `rust-star/reports/pool-1k-fcdfef5f/README.md`.
+Diagnose scratch RSS residency and prove which large buffers can safely avoid unconditional clearing before another 32K candidate. This is not a DwarfStar claim or fresh larger-frontier acceptance.
+The current milestone is complete; stop for the user update.
+
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-09, native prefill through all 43 layers
 and the output head is C0 exact at 128K, with 128 exact full-logit decode steps

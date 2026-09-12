@@ -18,6 +18,100 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-12 — Complete explicit scratch reuse: rejected
+
+- All local source/GPU/build proofs pass: 320 Rust tests, optimized production/
+  observed builds, formatting, 1,567 ring cases, router 7,840 words/96 guards,
+  weak observer proof and pool helper 62,043,240 bytes/192,360 guards. Synthetic
+  checks include 2,205 identity reuses and 84 rejected invalid checkouts.
+- 12K internal and three fresh 32K/128 full-C0 runs pass 50,031,360 exact FP32
+  comparisons; all 4,466 profile intervals pass. Pool audit covers 28 tiles,
+  119 snapshots and 2,940 checkouts: 105 stable distinct buffers per chunk,
+  exact capacities, completed prior work, at most one unfinished command,
+  no prior-chunk scratch at new entry and successful final owner cleanup.
+  Sampled logical peak is 2,493,173,233 bytes; all final weak samples are zero.
+- Preserve the original unsigned/signed nil-command marker audit failure and
+  failed driver statuses. A CPU-only probe established NSUIntegerMax before
+  results were examined; the corrected auditor changes only that sentinel,
+  still requiring status 4 for every reuse. No runtime/observer, capacity or
+  performance-gate changes and no repeated inference. Three preparation-script
+  assertion failures and corrections before builds are preserved too.
+- All 12 fixed engine runs finish with exact transcripts: two excluded warmups
+  and five AB/BA/AB/BA/AB pairs. Paired medians: prefill -10.243%, steady
+  decode -0.005%, RSS +2.415%, peak memory footprint +11.663%.
+  Decision: REJECTED; all accepted source/default restored. Peak RSS is the
+  only failed gate: +2.415% exceeds the unchanged +2% limit.
+  This compares Rust 1.74 with Rust 1.74, not DwarfStar or statistical significance.
+- Full input-after model/oracle/prompt/7,669-fixture hashes and all 42 final
+  source hashes pass. Prior default and frozen binaries are preserved; reused
+  build target contains the observed executable and is not the default.
+- Portable report: rust-star/reports/pool-1k-fcdfef5f/README.md. Verification
+  passes 221 artifacts,
+  source/observer inverses, C0/profile/ring/pool/engine re-audits, the original
+  sentinel failure and rejection of a corrupted completion status. GPU/runner/
+  hash sessions are complete. No publication, remote dispatch or 256K work.
+- Staged whitespace review preserves exact frozen evidence: host-tests.log has
+  a blank EOF, implementation.patch has six original context-space lines and
+  a blank EOF, and pool-helper.inc has its exact final blank line. Every other
+  staged path passes with only those three report files excluded. Their bytes
+  remain verified and unchanged.
+- Next milestone, NOT STARTED: diagnose scratch RSS residency and prove which
+  large buffers can safely avoid unconditional clearing before another 32K
+  candidate.
+  Finish the local commit and user update, then STOP.
+
+## 2026-09-12 — Scratch pool RSS gate already rules out retention
+
+- First three complete pairs show peak-RSS ratios1.024184/1.024157/1.024152,
+  all above the unchanged median limit1.02. With three of five ratios already
+  failing, the final median cannot pass. This corrects an intermediate update
+  that considered prefill/decode/footprint without checking RSS separately.
+- The fixed block continues through pairs4/5; do not exclude or repeat results.
+  After final audits/hashes, reject and restore accepted source/default. Early
+  prefill improvements and footprint ratios below1.15 do not override RSS.
+- Next proposal: bounded scratch-residency diagnosis and full-first-write proofs
+  for possible selective initialization. Unconditional clearing is a hypothesis
+  for the RSS cost, not an established cause. No next-milestone work has started.
+
+## 2026-09-12 — Scratch pool passes full C0 and ownership; engine block active
+
+- Both frozen Rust1.74 builds pass, as do320 host tests, formatting,7,840-word/
+  96-guard router checks,1,567 ring cases and the weak-observer proof. The exact
+  pool helper passes62,043,240 byte comparisons,192,360 guards,2,205 identity
+  reuses and84 invalid checkouts across seven synthetic four-tile GPU chunks.
+-12K internal plus normal/profiled/observed32K/128 checks all pass. Three full
+  runs compare50,031,360 FP32 words exactly; all4,466 profile intervals pass.
+- The frozen observer encodes no-prior-command as unsigned NSUIntegerMax; the
+  original auditor expected signed-1. A CPU-only Foundation probe confirmed
+  the representation before pool results were examined. Preserve the original
+  auditor failure and failed driver statuses. audit-pool-v2.py changes only the
+  first-checkout sentinel; reuse still requires completed status4. Runtime,
+  observer, capacities and performance gates are unchanged; no inference retry.
+- Corrected audit passes28 tiles/119 snapshots/2,940 checkouts across7 chunks:
+  105 distinct stable buffers per chunk, exact capacities, at most1 unfinished
+  command, no prior-chunk scratch at new entry and all final owner releases.
+  Maximum sampled logical scratch2,493,173,233 bytes; every final weak sample
+  is zero too. This is not an OS-footprint or speed acceptance claim.
+- Fixed engine block is active via launch-engine.py in
+  rust-star/.work/pool-1k-fcdfef5f. Two excluded warmups then AB/BA/AB/BA/AB;
+  no build/full-model hash overlaps timing. Source/default retention remains
+  undecided until all unchanged gates pass. Complete input-after, decision,
+  portable report, docs and local commit, then report the next milestone/STOP.
+
+## 2026-09-12 — Start explicit bounded scratch reuse
+
+- D approved one milestone. Prospective plan and unchanged engine gates are
+  frozen in rust-star/.work/pool-1k-fcdfef5f/plan.json and engine-plan.json.
+- Use one distinct scratch buffer per label within each eligible four-tile 1K
+  chunk, capped at 105 buffers and 2,493,173,233 logical bytes. Checked prior
+  completion precedes all initialization; clear/copy the entire requested range
+  to preserve fresh Metal buffer initialization, then keep original CPU writes.
+- Persistent state is excluded. Prove allocation routing, no escape, identity,
+  capacity, initialization and final/error owner cleanup before fresh full C0 and
+  pool-aware diagnostics. Only all passing prerequisites allow the fixed engine
+  block. Restore accepted runtime on failure; retain all evidence. Finish this
+  milestone, report the next one and STOP. No publication or 256K work.
+
 ## 2026-09-12 — Close bounded 1K: exact outputs, failed scratch-lifetime gate
 
 - All 320 Rust tests, production/diagnostic optimized builds, formatting, router
@@ -5426,9 +5520,10 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-12)
 
-- COMPLETED SINGLE MILESTONE: bounded 1K passes full C0 but fails the strict
-  scratch-lifetime prerequisite. No engine timing starts; accepted runtime is
-  restored. Report this negative result and explicit-reuse next milestone, then stop.
+- COMPLETED SINGLE MILESTONE: explicit scratch reuse rejected.
+  Full C0/pool proofs and all 12 engine runs complete; all accepted source/default restored.
+  Report: rust-star/reports/pool-1k-fcdfef5f/README.md. 221 artifacts verify.
+  Report this milestone and the next proposal, then STOP.
   Wide bootstrap c7adfb22 is rejected
   after all 12 engine runs and restored at 179e0c24. Verified report:
   rust-star/reports/wide-bootstrap-c7adfb22/README.md. Median prefill -1.127%,
@@ -5472,10 +5567,11 @@ Next:
   One unfinished command and 75% lower global logical peak do not override the
   failed prerequisite. No engine runs; all accepted source/default restored.
   Verified 116-artifact report: rust-star/reports/bounded-1k-34eabe66/README.md.
-- NEXT, NOT STARTED: explicit bounded scratch reuse with complete ownership/
-  first-write proofs and a new prospective identity/capacity contract, then
-  full C0 and unchanged engine/memory gates. Stop for the requested update.
-  Keep 256K paused and publication deferred.
+- COMPLETE: explicit scratch reuse. paired median prefill -10.243%, steady decode -0.005%, RSS +2.415%, peak memory footprint +11.663%.
+  REJECTED; all accepted source/default restored. Full C0/pool/engine evidence and
+  portable report are verified. Next: Diagnose scratch RSS residency and prove which large buffers can safely avoid unconditional clearing before another 32K candidate.
+  No next-milestone implementation/inference started; keep256K paused.
+
 
 - COMPLETE: attention-output whole-engine milestone. Candidate 4ced6ee8 is
   retained. Report rust-star/reports/attention-output-engine-4ced6ee8/README.md.
@@ -6397,15 +6493,12 @@ Next:
 
 ## Immediate Next Actions
 
-1. The bounded 1K milestone is closed and rejected at its lifetime prerequisite.
-   Preserve the verified report, all raw runs and the original failing audit.
-2. Report full C0, the completed-command scratch survivors, zero engine runs,
-   restored runtime and the explicit bounded-reuse next milestone.
-3. Stop after the update. A new pooling candidate needs its own prospective
-   ownership/capacity and first-write proofs, full C0 and engine/memory gates.
-   Do not relax this failed study's criteria or blindly repeat its runs.
-4. Keep oracle-v5 immutable, the interrupted 256K campaign paused and all
-   publication boundaries unchanged.
+1. The explicit scratch-reuse milestone is complete. Preserve the verified
+   report, original sentinel assertion and all raw evidence. All accepted source/default restored.
+2. Report rejected, full C0/pool coverage and engine/memory results.
+3. Next proposal, not started: Diagnose scratch RSS residency and prove which large buffers can safely avoid unconditional clearing before another 32K candidate.
+4. STOP after the update. Keep oracle-v5 immutable,256K paused and publication
+   deferred; do not begin the next milestone automatically.
 
 ## Entries
 

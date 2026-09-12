@@ -1,0 +1,9 @@
+{
+  "name": "candidate-32k-profiled",
+  "exit_code": 0,
+  "started_utc": "2026-09-12T14:53:35.743777+00:00",
+  "finished_utc": "2026-09-12T14:57:11.746107+00:00",
+  "elapsed_seconds": 216.00280012500002,
+  "executable_sha256": "eb50db2862c3fed2bb4e0c6245ec1095a75bb4e38a2e8a38516833ce5333c3ea",
+  "peak_rss_bytes": 5480906752
+}

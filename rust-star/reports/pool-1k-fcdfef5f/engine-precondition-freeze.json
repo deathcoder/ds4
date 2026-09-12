@@ -1,0 +1,19 @@
+{
+  "created_utc": "2026-09-12T15:02:48.669012+00:00",
+  "files": {
+    "diagnostic-selection.json": "98b8583fa965a9c721e3b23595080d6518166213e93017f0693aea9089e9cc98",
+    "audit-pool-v2.py": "def28cd688e02ee43976b9c0fce3e7c09b1f73c155a15d0a2a67424d373b76b3",
+    "audit-lifetime.py": "f5795b978993f3378d2d4d21da07d4f48270ca7ad02c874f1c5c5809457b3e0f",
+    "audit-representation-amendment.json": "35cc92d8ed7dc6dd57303826a48d5db79c895ea5b4ab8424ae67c4079c8b4c97",
+    "status-representation.log": "710f0b530631f266b75f6ff5630054098600e341b98a5ccea8ec241a76f81e60",
+    "pool-proof.log": "9f89e237f17f00b5d4113abd991e0a7cd46c31a834f611e18c13090612eb6b4f",
+    "ownership-source-audit.json": "21ba3f45662114b994e85cab406a53e78166ad11adaa0f53c604994cae7dc318",
+    "scope-proof.md": "7e434a1ec5a17df71f0124db8d7660c557c7f20c9c60c9210a8950953ecfdadf",
+    "lifetime-validation-acceptance.json": "ade65ca761a78bb8fd75e78b20309563a1146e4dabc8fec9b82b6ba10ef27e1b",
+    "profile-audit.json": "dc0a138481fb49d2c98ab232bf982133541d210f12d944bef058957da408b48b",
+    "lifetime-failure.json": "c06d5333a21054be85140a768ce08ba83b4953886e7019e5dcffcf50bc8d99b2",
+    "validation-driver-failure.json": "61739796ab316e5f04c6bd3b40b198163f4574a8b0b5ab3c30fcfe87d19d94b9"
+  },
+  "pool_auditor": "audit-pool-v2.py",
+  "representation_correction_only": true
+}

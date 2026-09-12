@@ -1,0 +1,9 @@
+{
+  "name": "candidate-12k-internal",
+  "exit_code": 0,
+  "started_utc": "2026-09-12T14:47:25.871220+00:00",
+  "finished_utc": "2026-09-12T14:49:47.517154+00:00",
+  "elapsed_seconds": 141.648438542,
+  "executable_sha256": "eb50db2862c3fed2bb4e0c6245ec1095a75bb4e38a2e8a38516833ce5333c3ea",
+  "peak_rss_bytes": 6635487232
+}

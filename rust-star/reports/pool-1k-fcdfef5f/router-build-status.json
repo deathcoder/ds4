@@ -1,0 +1,17 @@
+{
+  "name": "router-build",
+  "args": [
+    "clang",
+    "-O2",
+    "-fobjc-arc",
+    "-framework",
+    "Foundation",
+    "-framework",
+    "Metal",
+    "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/pool-1k-fcdfef5f/router-probe.m",
+    "-o",
+    "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/pool-1k-fcdfef5f/router-probe"
+  ],
+  "exit_code": 0,
+  "log_sha256": "1e8e1a1f65786240696fcf6baaab2fb22d13bb92f9f0069ecb58fc8d0ca3c894"
+}

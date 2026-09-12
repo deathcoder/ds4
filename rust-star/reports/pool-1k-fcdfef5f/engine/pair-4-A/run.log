@@ -1,0 +1,22 @@
+Rust Star eligible measurement: prefill 143.268 tok/s, generation 20.139 tok/s, steady 20.185 tok/s
+correctness: exact 128-token oracle transcript; prefill and generation collection disabled
+paired protocol: eligible
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/pool-1k-fcdfef5f/engine/pair-4-A/engine-run.json
+      256.67 real         4.52 user        74.10 sys
+         90034880512  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+             7722180  page reclaims
+                  13  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                   0  voluntary context switches
+               73628  involuntary context switches
+        568418473719  instructions retired
+        235694692077  cycles elapsed
+         12385158976  peak memory footprint

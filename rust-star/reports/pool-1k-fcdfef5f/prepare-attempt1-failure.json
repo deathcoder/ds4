@@ -1,0 +1,1 @@
+{"phase":"source preparation before any build or runtime edit","failure":"substring-based uniqueness assertion matched hc_buffer inside longer scratch names","correction":"match complete identifier boundary; preserve original generator; no inference attempted"}

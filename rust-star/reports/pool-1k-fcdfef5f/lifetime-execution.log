@@ -1,0 +1,12 @@
+START candidate-lifetime 2026-09-12T14:57:15.815074+00:00
+PASS candidate-lifetime
+Traceback (most recent call last):
+  File "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/pool-1k-fcdfef5f/audit-lifetime.py", line 17, in <module>
+    assert all(x['prior_status']==(-1 if i==0 else 4) for x in cs)
+AssertionError
+Traceback (most recent call last):
+  File "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/pool-1k-fcdfef5f/run-lifetime.py", line 40, in <module>
+    subprocess.run(['python3',str(w/'audit-lifetime.py')],check=True)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/subprocess.py", line 528, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['python3', '/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/pool-1k-fcdfef5f/audit-lifetime.py']' returned non-zero exit status 1.

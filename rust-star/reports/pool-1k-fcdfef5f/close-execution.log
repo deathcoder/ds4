@@ -1,0 +1,8 @@
+{
+  "retained": false,
+  "failed_gates": [
+    "peak_rss_median"
+  ],
+  "source_files_verified": 42,
+  "default_executable_sha256": "2bf77edb9886f4efa5d011cba963aaef7e2bf140db1b3a09c6193e76bdc77af4"
+}

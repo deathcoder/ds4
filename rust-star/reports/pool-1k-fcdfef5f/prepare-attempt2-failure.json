@@ -1,0 +1,1 @@
+{"phase":"source preparation before build/runtime edit","failure":"macro definition consumed first invocation; conditional compressed-position constructor excluded by direct allocation pattern","correction":"exclude backslash in macro argument matching; explicitly transform conditional allocation; require exact105-name coverage"}

@@ -1,0 +1,15 @@
+{
+  "utc": "2026-09-12T15:01:16.342073+00:00",
+  "completed": [
+    {
+      "name": "candidate-lifetime",
+      "exit_code": 0,
+      "started_utc": "2026-09-12T14:57:15.815074+00:00",
+      "finished_utc": "2026-09-12T15:01:13.919936+00:00",
+      "elapsed_seconds": 238.105373625,
+      "executable_sha256": "5bc5f84800b2aad2043b429367f86a3f6990752267efcf3b864fe4dbf40200f9",
+      "peak_rss_bytes": 5480398848
+    }
+  ],
+  "traceback": "Traceback (most recent call last):\n  File \"/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/pool-1k-fcdfef5f/run-lifetime.py\", line 40, in <module>\n    subprocess.run(['python3',str(w/'audit-lifetime.py')],check=True)\n  File \"/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/subprocess.py\", line 528, in run\n    raise CalledProcessError(retcode, process.args,\nsubprocess.CalledProcessError: Command '['python3', '/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/pool-1k-fcdfef5f/audit-lifetime.py']' returned non-zero exit status 1.\n"
+}
