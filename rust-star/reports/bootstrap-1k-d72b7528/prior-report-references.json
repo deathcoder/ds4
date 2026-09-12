@@ -1,0 +1,10 @@
+{
+  "msrv-c0-5834fe56": {
+    "report": "../msrv-c0-5834fe56",
+    "manifest_sha256": "4f9d38d1adffd3a9c212955e32e6a8e3a883f3f8cb59a3ec7ff5c41ce4fbf3da"
+  },
+  "wide-bootstrap-c7adfb22": {
+    "report": "../wide-bootstrap-c7adfb22",
+    "manifest_sha256": "03b33f11c65ccd6fb68c38c45a077946ec777906f5eaf86d4aaf9c520346c79d"
+  }
+}

@@ -1,0 +1,17 @@
+START prepare-source 2026-09-12T11:41:48.621443+00:00
+PASS prepare-source
+START format 2026-09-12T11:41:48.779860+00:00
+PASS format
+START ring-audit 2026-09-12T11:41:50.076915+00:00
+PASS ring-audit
+START host-tests 2026-09-12T11:41:50.177917+00:00
+PASS host-tests
+START release-build 2026-09-12T11:44:03.185101+00:00
+PASS release-build
+START format-check 2026-09-12T11:46:47.477610+00:00
+PASS format-check
+START router-build 2026-09-12T11:46:48.086162+00:00
+PASS router-build
+START router-probe 2026-09-12T11:46:48.581728+00:00
+PASS router-probe
+FROZEN candidate after complete build/source/router/ring checks

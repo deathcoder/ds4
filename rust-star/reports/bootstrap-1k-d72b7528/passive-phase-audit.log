@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "runs": 12,
+  "paired_phase_deltas_ms": {
+    "prefill_bootstrap_setup_ms": 123.72467199400003,
+    "prefill_tile_wall_ms": -25305.901999991,
+    "prefill_tile_gpu_ms": -25363.288916673002,
+    "prefill_transformer_setup_ms": 171.32111503399938,
+    "prefill_transformer_wall_ms": -415.01400002499577,
+    "prefill_transformer_gpu_ms": -189.784374957002,
+    "prefill_host_overhead_ms": 307.7420420110002,
+    "prefill_context_setup_ms": -2.4622499999999974,
+    "model_residency_host_ms": 23.717332999000064,
+    "prefill_unattributed_host_ms": -2.7399369999999976,
+    "transformer_command_wall_minus_gpu_ms": -185.28199974499876
+  }
+}

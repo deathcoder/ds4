@@ -1,0 +1,12 @@
+{
+  "name": "ring-audit",
+  "command": [
+    "python3",
+    "$WORK/audit-ring.py"
+  ],
+  "exit_code": 0,
+  "started_utc": "2026-09-12T11:41:50.076915+00:00",
+  "finished_utc": "2026-09-12T11:41:50.136203+00:00",
+  "elapsed_seconds": 0.05929179100000015,
+  "log_sha256": "590affaa6ad04ea781a58d01ee593086ba6913b6f7a2209b6b31701b94466df4"
+}

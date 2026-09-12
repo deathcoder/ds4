@@ -9,7 +9,7 @@ project, and no arbitrary percentage gain defines research success.
 | Fixed-target Q2 resident decoder and benchmark | Native 43-layer runtime and greedy decoder exist on the M1 Ultra | Keep supported-mode boundaries and user-facing invocation accurate as code evolves |
 | Immutable oracle and exact FP32 contract | Oracle-v5 and full-output differential fixtures are established | Preserve provenance; diagnose every new mismatch before performance acceptance |
 | Current lower-context performance | Retained 4ced6ee8 passes full 32K/128 C0 and five Rust-versus-Rust pairs; 4.329% lower paired prefill latency | Continue profile-driven whole-engine decisions and refresh the direct pinned-DwarfStar comparison |
-| Active optimization | Rust 1.74 current build passes fresh normal/profiled 32K/128 C0; bootstrap ingress 16.233% of recorded GPU stage time | Run a separate 1K bootstrap working-set study with exact source/internal/full-C0 gates and fixed engine/RSS/footprint criteria; preserve both routed-half and 4K failures. |
+| Latest optimization | 1K bootstrap passes full C0 and every timing/decode/RSS gate; paired prefill latency -11.234%, but separate peak memory footprint +44.722% fails the <=15% gate. Accepted source restored. | Proposed next milestone: measure bootstrap scratch allocation/command lifetimes before another reuse or batching change. Not started. |
 | Larger-frontier correctness on current source | Earlier versions have full 128K evidence; current attention-output changes have fresh full-model evidence at 32K only | Revalidate source-dependent frontiers under a new prospective plan after addressing the lower-context performance priority |
 | Primary 256K operating point | Earlier attempt is preserved as interrupted, not accepted | Keep the interrupted campaign paused; establish a justified new correctness/capacity/performance milestone rather than automatically resuming it |
 | Capacity characterization beyond 256K | Desired when memory permits, not guaranteed by model theoretical capacity | Plan bounded allocation/capacity evidence and preserve infeasible-frontier results |
@@ -22,7 +22,8 @@ are not silently added to the initial executable scope. Any unresolved initial
 requirement must remain visible; research goals without a finite acceptance
 condition must not be declared complete by inventing one.
 
-The user ended continuous token-burn execution on 2026-09-12. The current Rust
-1.74 full-C0/profile milestone is complete; report its outcome and the next
-milestone, then stop. The separate 1K bootstrap plan is prepared but no runtime
-edits or build have started. Resume from the journal when work is requested.
+The user authorized one bounded 1K bootstrap milestone after ending continuous
+execution. That milestone is complete: the candidate was rejected on memory
+footprint, accepted source is restored, and the portable report verifies.
+Report the outcome and next milestone, then stop. No follow-up implementation
+or inference run has started.

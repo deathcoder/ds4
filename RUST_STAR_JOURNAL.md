@@ -18,6 +18,97 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-12 — Close 1K bootstrap: faster prefill, rejected memory footprint
+
+- All 12 engine processes (two excluded warmups and five measured pairs)
+  complete with exact oracle transcripts. Every pair is prefill-faster; paired
+  median latency is -11.234%, with AB/BA ratios 0.887659/0.887799. Aggregate role
+  medians are 226.109s baseline and 200.808s candidate. Steady decode -0.317%
+  and peak RSS -0.059% pass their gates.
+- Separate macOS peak memory footprint rises 44.722% at the paired median,
+  exceeding the unchanged <=15% allowance. Role medians are 12,385,601,512 and
+  17,927,292,616 bytes. Every footprint pair is above 1.43. This is the sole
+  failed retention gate; reject the candidate without relaxing it or adding runs.
+- Passive paired bootstrap wall time falls 25,305.902ms; transformer wall time
+  falls 415.014ms; host overhead rises 307.742ms. These timings do not establish
+  a particular allocator, command-lifetime or stall cause for the footprint.
+- Full input-after hashes pass for model, prompt, oracle, all 7,669 fixtures,
+  source and executables. Engine session 18051 and final-hash session 21502 are
+  complete and drained. All 42 accepted source hashes are restored; the default
+  performance executable remains 2bf77edb9886f4efa5d011cba963aaef7e2bf140db1b3a09c6193e76bdc77af4.
+  Experimental binaries and all raw evidence remain preserved separately.
+- Verified portable report: rust-star/reports/bootstrap-1k-d72b7528/README.md.
+  First verification .work/bootstrap-1k-verify-1.log passes 178 artifacts,
+  complete source inverse, all 33,354,240 full-C0 FP32 comparisons, profile
+  coverage and recomputation of every engine/memory gate. No verifier failure.
+- Whitespace review preserves byte-exact raw artifacts. The full staged check
+  flags only host-tests.log (blank EOF) and implementation.patch (three original
+  patch-context space lines) in this report. Code/docs and all remaining staged
+  files pass with only those two exact artifact paths excluded; hashes remain
+  unchanged. No runtime or report-data repair is needed.
+- Next milestone: measure bootstrap scratch allocation and command lifetimes,
+  then consider a narrowly scoped reuse or bounded-in-flight policy under a
+  new plan. Source review supplies a hypothesis, not a proved cause or fix.
+  No follow-up implementation has started. Commit this milestone, report it,
+  then STOP as requested. No publication, new DwarfStar claim or 256K work.
+
+## 2026-09-12 — Four 1K engine pairs complete; final pair active
+
+- Both warmups and four complete measured pairs finish successfully with exact
+  oracle transcripts. Pair5 baseline started12:39:54 UTC in engine session18051.
+  Finish its candidate role before calculating the complete gate decision.
+- Prepared closure/report/verifier helpers are copied into the study directory.
+  They do not change runtime, frozen study scripts, criteria or raw data. The
+  portable verifier accounts explicitly for redacted plan and raw-file hashes.
+- After the entire block, audit passive phases and complete final input hashes
+  with GPU idle, retain/restore according to every predeclared gate, verify the
+  portable report and commit locally. Then stop with outcome and next milestone.
+
+## 2026-09-12 — 1K full C0 passes; fixed engine study begins
+
+- The 12K internal check and normal/profiled 32K/128 full-output checks all
+  pass. Two full runs check 33,354,240 FP32 words exactly. Every one of the
+  4,466 profile component intervals passes the unchanged audit. Session72205
+  completed successfully; no failed run or discretionary retry occurred.
+- Diagnostic bootstrap time: 32,939.910ms baseline to6,074.175ms candidate;
+  raw ratio0.184402 and control-normalized ratio0.195533 both pass <0.90.
+  This is perturbed component evidence only, not whole-engine acceptance.
+- Start engine-runner.py: two warmups, then AB/BA/AB/BA/AB, with current
+  Rust1.74 baseline and frozen candidate31898eb7. Keep every raw run and all
+  predeclared prefill/order/decode/RSS/footprint gates. No concurrent GPU work,
+  model hashing, heavy builds, source edits or frozen-script changes.
+- The memory auditor independently reproduces the old4K metrics and rejects
+  its known1.524844 footprint ratio. This is an auditor regression check only;
+  it does not alter the prior rejected study or contribute new timing samples.
+
+## 2026-09-12 — 1K candidate build and local proofs pass
+
+- All 320 Rust 1.74 tests, optimized build and formatting pass. Complete source
+  inverse/formatter audit covers the three edited files; 39 others are unchanged.
+  The raw-ring proof covers 1,567 cases. Actual unchanged Metal router kernels
+  pass all 7,840 output words and 96 guards at widths 32, 64 and 1024.
+- Candidate-build.json freezes source, binary and run scripts. No source or
+  frozen-script edits during inference. Build session 66370 is complete.
+- Full input verification is active in session 64776 (input-before.log), with
+  GPU idle. Require its success before run-validation.py: 12K internal, normal
+  32K/128 and profiled 32K/128 full-logit gates, stopping on any failure.
+- Peak-memory-footprint median ratio <=1.15 remains a required engine gate,
+  alongside every original prefill/order/decode/RSS criterion. No threshold
+  changes, discretionary reruns or publication. Stop after this milestone.
+
+## 2026-09-12 — Resume the bounded 1K bootstrap milestone
+
+- User authorized the next milestone with “lets do it”; finish this milestone
+  and report its outcome and next action, then stop. Continuous execution
+  remains off. No publication or automatic 256K work.
+- Verified the prepared experiment against the accepted 42 source hashes.
+  Reconciled its baseline commit from e73a4b79 to documentation-only d72b7528;
+  preserved both original plans and every unchanged acceptance threshold.
+- Starting .work/bootstrap-1k-current/build-and-freeze.py. It freezes scripts,
+  applies the scoped three-file candidate, verifies the complete inverse and
+  Rust 1.74 formatting, then host/build/router/ring gates. Build failures stop
+  and remain preserved. Full-model and engine runs remain gated on those checks.
+
 ## 2026-09-12 — Return to milestone-by-milestone updates
 
 - User ended token-burn mode and requested finishing the current milestone,
@@ -5223,7 +5314,8 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-12)
 
-- PAUSED AT COMPLETED MILESTONE: user ended continuous execution.
+- COMPLETED SINGLE MILESTONE: 1K bootstrap is rejected and accepted source
+  restored. Report the outcome and next milestone, then stop.
   Wide bootstrap c7adfb22 is rejected
   after all 12 engine runs and restored at 179e0c24. Verified report:
   rust-star/reports/wide-bootstrap-c7adfb22/README.md. Median prefill -1.127%,
@@ -5245,12 +5337,18 @@ Next:
 - COMPLETE: current Rust 1.74 normal/profiled 32K/128 full C0; 33,354,240
   exact FP32 comparisons and all 4,466 profile intervals pass. All final input,
   fixture, source and executable hashes match. Report:
-  rust-star/reports/msrv-c0-5834fe56/README.md. No GPU job active.
-- NEXT: distinct 1K bootstrap working-set experiment with same-compiler baseline.
-  Refreshed bootstrap share 16.233% passes the prospective >=10% target threshold.
-  Require source/router/ring/internal/full-C0 proofs and all fixed whole-engine
-  gates, including separate peak-memory-footprint median ratio <=1.15.
-  Keep 256K paused, oracle-v5 immutable and publication deferred.
+  rust-star/reports/msrv-c0-5834fe56/README.md. Baseline evidence is complete.
+- COMPLETE: 1K bootstrap study. All build/source/router/ring/internal/full-C0
+  gates pass, including 33,354,240 exact FP32 words. All five engine pairs are
+  faster; median paired prefill -11.234%, steady decode -0.317%, RSS -0.059%.
+  Separate peak-memory-footprint +44.722% fails the <=15% gate. Candidate is
+  rejected; all 42 accepted sources and the default executable are restored/
+  unchanged. Verified 178-artifact report:
+  rust-star/reports/bootstrap-1k-d72b7528/README.md. No GPU workload active.
+- NEXT, NOT STARTED: measure bootstrap scratch allocation/command lifetimes
+  before another batching or reuse change. The source suggests a bounded
+  investigation; it does not prove the memory-growth cause. Stop for the
+  requested milestone update. Keep 256K paused and publication deferred.
 
 - COMPLETE: attention-output whole-engine milestone. Candidate 4ced6ee8 is
   retained. Report rust-star/reports/attention-output-engine-4ced6ee8/README.md.
@@ -6172,15 +6270,14 @@ Next:
 
 ## Immediate Next Actions
 
-1. Current Rust 1.74 full-model C0/profile is complete. Preserve both routed-half
-   failures and the 4K-bootstrap rejection without reinterpretation or reruns.
-2. Freeze and build the distinct 1K-bootstrap experiment at
-   .work/bootstrap-1k-current/. Only its scoped three files may change. Require
-   full source inverse, existing tests, actual router and ring proofs first.
-3. If build/proofs pass, run 12K internal checks plus normal/profiled 32K/128 C0;
-   select a fixed whole-engine block only if diagnostic thresholds pass.
-4. Retain only after all predeclared timing/decode/RSS/footprint gates; otherwise
-   restore accepted source and continue. No automatic 256K or publication.
+1. The bounded 1K milestone is complete and rejected on footprint. Review the
+   verified report and preserve all evidence; no more runs belong to this plan.
+2. Report the measured latency gain, failed memory gate and completed source
+   restoration, with scratch-lifetime measurement as the next milestone.
+3. Stop after that update. Any future implementation requires a separate plan,
+   dependency/ownership proof, fresh full C0 and whole-engine/memory criteria.
+4. Keep oracle-v5 immutable, the interrupted 256K campaign paused and all
+   publication boundaries unchanged.
 
 ## Entries
 

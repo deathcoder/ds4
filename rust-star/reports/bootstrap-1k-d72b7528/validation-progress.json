@@ -1,0 +1,29 @@
+[
+  {
+    "name": "candidate-12k-internal",
+    "exit_code": 0,
+    "started_utc": "2026-09-12T11:48:55.473719+00:00",
+    "finished_utc": "2026-09-12T11:51:13.088239+00:00",
+    "elapsed_seconds": 137.68292679200002,
+    "executable_sha256": "31898eb72663f7ef2bac134569430c53a54232a49125a610e3a7a27adc996a5f",
+    "peak_rss_bytes": 6103384064
+  },
+  {
+    "name": "candidate-32k-output",
+    "exit_code": 0,
+    "started_utc": "2026-09-12T11:51:14.619676+00:00",
+    "finished_utc": "2026-09-12T11:54:51.688670+00:00",
+    "elapsed_seconds": 217.07040775000002,
+    "executable_sha256": "31898eb72663f7ef2bac134569430c53a54232a49125a610e3a7a27adc996a5f",
+    "peak_rss_bytes": 3316236288
+  },
+  {
+    "name": "candidate-32k-profiled",
+    "exit_code": 0,
+    "started_utc": "2026-09-12T11:54:53.261852+00:00",
+    "finished_utc": "2026-09-12T11:58:22.919051+00:00",
+    "elapsed_seconds": 209.65856133299997,
+    "executable_sha256": "31898eb72663f7ef2bac134569430c53a54232a49125a610e3a7a27adc996a5f",
+    "peak_rss_bytes": 3317563392
+  }
+]

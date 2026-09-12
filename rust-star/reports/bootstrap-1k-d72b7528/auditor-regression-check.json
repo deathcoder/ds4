@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "purpose": "Auditor regression check on preserved rejected4K data only; no new inference or relabeling of the prior result.",
+  "auditor_sha256": "fed3626938d93427713f277a5da3f7f2afe69272b03c70dc81a8effd03ab69e1",
+  "prior_audit_sha256": "392457a13ec17f9380461301f0f724e407ecb3a37da430554d225211e452fb42",
+  "all_prior_metrics_and_gates_unchanged": true,
+  "new_footprint_gate_rejects_known_regression": true,
+  "observed_old_footprint_ratio": 1.5248435879467328
+}

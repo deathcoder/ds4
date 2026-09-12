@@ -1,0 +1,12 @@
+{
+  "name": "router-probe",
+  "command": [
+    "$WORK/router-probe",
+    "$WORK/ffn_router.metal"
+  ],
+  "exit_code": 0,
+  "started_utc": "2026-09-12T11:46:48.581728+00:00",
+  "finished_utc": "2026-09-12T11:46:49.181325+00:00",
+  "elapsed_seconds": 0.5996020000000044,
+  "log_sha256": "ba22f38863e5c891512eeb2ac7c29abe6d0c602263b2cf56d9dc38a4ef190ddf"
+}

@@ -1,0 +1,20 @@
+{
+  "name": "router-build",
+  "command": [
+    "clang",
+    "-O2",
+    "-fobjc-arc",
+    "-framework",
+    "Foundation",
+    "-framework",
+    "Metal",
+    "$WORK/router-probe.m",
+    "-o",
+    "$WORK/router-probe"
+  ],
+  "exit_code": 0,
+  "started_utc": "2026-09-12T11:46:48.086162+00:00",
+  "finished_utc": "2026-09-12T11:46:48.536872+00:00",
+  "elapsed_seconds": 0.45071854200000416,
+  "log_sha256": "98eb0cef2996b9b56a0d9eeb94907d97850ccc5001e0bd8364e9faa9ee643679"
+}

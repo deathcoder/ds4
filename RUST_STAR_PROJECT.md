@@ -569,6 +569,15 @@ closes its full-model compatibility gap at 32K without a performance claim.
 Bootstrap ingress is 16.233% of recorded GPU stage time; a distinct 1K batch
 hypothesis is next, with explicit memory and whole-engine acceptance gates.
 
+The subsequent 1K bootstrap candidate passes source/build/local proofs, 12K
+internal checks and normal/profiled 32K/128 full C0. Five complete engine pairs
+show 11.234% lower median paired prefill latency, with decode and RSS gates
+passing. Separate peak memory footprint rises 44.722%, failing the predeclared
+15% allowance. Reject it and restore every accepted source hash and the unchanged
+default executable. Report `rust-star/reports/bootstrap-1k-d72b7528/README.md`
+verifies 178 artifacts and every gate. Scratch allocation/command lifetime
+measurement is a proposed next milestone; no specific memory cause is proved.
+
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-09, native prefill through all 43 layers
 and the output head is C0 exact at 128K, with 128 exact full-logit decode steps

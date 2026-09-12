@@ -1,0 +1,12 @@
+{
+  "name": "prepare-source",
+  "command": [
+    "python3",
+    "$WORK/prepare-source.py"
+  ],
+  "exit_code": 0,
+  "started_utc": "2026-09-12T11:41:48.621443+00:00",
+  "finished_utc": "2026-09-12T11:41:48.731860+00:00",
+  "elapsed_seconds": 0.11041683400000002,
+  "log_sha256": "afa8b3469f2b8f2937aec97dc0f339d167bd605357002ef7412594860e7dc6e5"
+}

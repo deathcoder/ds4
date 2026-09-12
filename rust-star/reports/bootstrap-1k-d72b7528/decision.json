@@ -1,0 +1,9 @@
+{
+  "closed": true,
+  "utc": "2026-09-12T12:50:29.959752+00:00",
+  "retained": false,
+  "reason": "Failed predeclared gates: peak_memory_footprint_median. Correctness passes, but the candidate does not qualify for retention.",
+  "failed_gates": [
+    "peak_memory_footprint_median"
+  ]
+}

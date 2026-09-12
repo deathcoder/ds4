@@ -1,0 +1,17 @@
+{
+  "name": "release-build",
+  "command": [
+    "cargo",
+    "+1.74.0",
+    "build",
+    "--release",
+    "--locked",
+    "--manifest-path",
+    "rust-star/runtime/Cargo.toml"
+  ],
+  "exit_code": 0,
+  "started_utc": "2026-09-12T11:44:03.185101+00:00",
+  "finished_utc": "2026-09-12T11:46:47.431445+00:00",
+  "elapsed_seconds": 164.24471849999998,
+  "log_sha256": "3996ec3e90b38192a57bd625a08dda6cf930c1e766420438b651754c42f1691e"
+}

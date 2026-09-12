@@ -1,0 +1,64 @@
+{
+  "rust-star/runtime/src/metal.rs": [
+    {
+      "before": "        if rows != 32 && rows != 64 {\n            return Err(Error::invalid(\"invalid prefill boundary tile width\"));\n        }",
+      "after": "        let native_1k = rows == 1024\n            && !collect_outputs\n            && complete_layer1\n            && include_layer2_compressors\n            && kv_state_mode == 2\n            && shared_context.is_some()\n            && token_source.is_some()\n            && position_start > 0\n            && prefill_rows <= 32768\n            && prefill_rows >= 8192\n            && prefill_rows % 4096 == 0\n            && position_start >= prefill_rows - 4096\n            && position_start % 1024 == 0\n            && position_start.checked_add(rows).map_or(false, |end| end <= prefill_rows);\n        if rows != 32 && rows != 64 && !native_1k {\n            return Err(Error::invalid(\"invalid prefill boundary tile width\"));\n        }"
+    },
+    {
+      "before": "    fn run_prefill_layers012_compressor_loop_probe_in_context(\n        model: &MappedModel,\n        context: &Context,\n        collect_outputs: bool,\n        position_begin: u32,\n        prefill_rows: u32,\n        tokens: Option<&[u32]>,\n    ) -> Result<(\n        Option<PrefillLayers012CompressorLoopProbeReport>,\n        NativePrefillTiming,\n    )> {\n        let bootstrap_started = Instant::now();\n        const DIAGNOSTIC_TILE_ROWS: usize = 32;\n        const PRODUCTION_TILE_ROWS: usize = 64;\n        let tile_rows = if collect_outputs {\n            DIAGNOSTIC_TILE_ROWS\n        } else {\n            PRODUCTION_TILE_ROWS\n        };\n",
+      "after": "    fn run_prefill_layers012_compressor_loop_probe_in_context(\n        model: &MappedModel,\n        context: &Context,\n        collect_outputs: bool,\n        position_begin: u32,\n        prefill_rows: u32,\n        tokens: Option<&[u32]>,\n    ) -> Result<(\n        Option<PrefillLayers012CompressorLoopProbeReport>,\n        NativePrefillTiming,\n    )> {\n        let tile_rows = if collect_outputs { 32 } else { 64 };\n        run_prefill_layers012_compressor_loop_with_tile_rows(\n            model, context, collect_outputs, position_begin, prefill_rows, tokens, tile_rows,\n        )\n    }\n\n    fn run_prefill_layers012_compressor_loop_with_tile_rows(\n        model: &MappedModel,\n        context: &Context,\n        collect_outputs: bool,\n        position_begin: u32,\n        prefill_rows: u32,\n        tokens: Option<&[u32]>,\n        tile_rows: usize,\n    ) -> Result<(\n        Option<PrefillLayers012CompressorLoopProbeReport>,\n        NativePrefillTiming,\n    )> {\n        let bootstrap_started = Instant::now();\n        if (collect_outputs && tile_rows != 32)\n            || (!collect_outputs && tile_rows != 64 && tile_rows != 1024)\n        {\n            return Err(Error::invalid(\"invalid compressor loop tile width\"));\n        }\n"
+    },
+    {
+      "before": "            model, context, collect_outputs, position_begin, prefill_rows, tokens, tile_rows,\n",
+      "after": "            model,\n            context,\n            collect_outputs,\n            position_begin,\n            prefill_rows,\n            tokens,\n            tile_rows,\n"
+    }
+  ],
+  "rust-star/runtime/src/long_prefill.rs": [
+    {
+      "before": "        let (_, bootstrap_timing) = run_prefill_layers012_compressor_loop_probe_in_context(\n            model,\n            &context,\n            false,\n            start,\n            end,\n            Some(&tokens[..end as usize]),\n        )?;",
+      "after": "        // Only the lower-context native continuation uses a 1K\n        // bootstrap batch. Prefix, legacy callers and larger frontiers keep 64.\n        let bootstrap_tile_rows = if frontier <= 32768 { 1024 } else { 64 };\n        let (_, bootstrap_timing) = run_prefill_layers012_compressor_loop_with_tile_rows(\n            model,\n            &context,\n            false,\n            start,\n            end,\n            Some(&tokens[..end as usize]),\n            bootstrap_tile_rows,\n        )?;"
+    }
+  ],
+  "rust-star/runtime/src/metal_shim.m": [
+    {
+      "before": "    if (n_vocab != 129280u || (rows != 32u && rows != 64u) ||\n        (prefill_rows != 2048u",
+      "after": "    const BOOL native_1k_bootstrap = rows == 1024u && !collect_outputs &&\n        complete_layer1 && continue_layer2_compressors && kv_state_mode == 2u &&\n        position_start > 0u && prefill_rows <= 32768u &&\n        prefill_rows >= 8192u && prefill_rows%4096u == 0u &&\n        position_start >= prefill_rows-4096u && position_start%1024u == 0u &&\n        (uint64_t)position_start + rows <= prefill_rows;\n    if (n_vocab != 129280u ||\n        (rows != 32u && rows != 64u && !native_1k_bootstrap) ||\n        (prefill_rows != 2048u"
+    },
+    {
+      "before": "        const BOOL retain_kv_state = kv_state_mode == 1u;\n        const BOOL consume_kv_state = kv_state_mode == 2u;",
+      "after": "        if (native_1k_bootstrap && (!context.prefillLayerChunkStart ||\n            context.prefillLayerChunkStart.unsignedIntValue != prefill_rows-4096u)) {\n            return fail_with_message(error, error_bytes,\n                @\"1K bootstrap requires the active native continuation chunk\");\n        }\n        const BOOL retain_kv_state = kv_state_mode == 1u;\n        const BOOL consume_kv_state = kv_state_mode == 2u;"
+    },
+    {
+      "before": "        int32_t positions[64];",
+      "after": "        int32_t positions[1024];"
+    },
+    {
+      "before": "        int32_t compressed_positions[16];",
+      "after": "        int32_t compressed_positions[256];"
+    },
+    {
+      "before": "        [encoder setComputePipelineState:context.cpyF16F32Pipeline];\n        [encoder setBytes:&kv_elements length:sizeof(kv_elements) atIndex:0];\n        [encoder setBuffer:kv_half_buffer offset:0 atIndex:1];\n        [encoder setBuffer:raw_cache_buffer\n                     offset:raw_cache_target_row*kv_dim*sizeof(float) atIndex:2];\n        [encoder dispatchThreadgroups:MTLSizeMake(conversion_groups,1,1)\n             threadsPerThreadgroup:MTLSizeMake(256,1,1)];",
+      "after": "        // A 1K batch leaves exactly its final 128 rows in the raw ring.\n        const uint32_t raw_copy_rows = MIN(rows, (uint32_t)raw_cache_rows);\n        const uint32_t raw_copy_elements = raw_copy_rows*kv_dim;\n        const NSUInteger raw_source_row = rows-raw_copy_rows;\n        const NSUInteger raw_target_row =\n            (position_start+raw_source_row)%raw_cache_rows;\n        [encoder setComputePipelineState:context.cpyF16F32Pipeline];\n        [encoder setBytes:&raw_copy_elements length:sizeof(raw_copy_elements) atIndex:0];\n        [encoder setBuffer:kv_half_buffer\n                     offset:raw_source_row*kv_dim*sizeof(uint16_t) atIndex:1];\n        [encoder setBuffer:raw_cache_buffer\n                     offset:raw_target_row*kv_dim*sizeof(float) atIndex:2];\n        [encoder dispatchThreadgroups:MTLSizeMake((raw_copy_elements+1023u)/1024u,1,1)\n             threadsPerThreadgroup:MTLSizeMake(256,1,1)];"
+    },
+    {
+      "before": "            [encoder setComputePipelineState:context.cpyF16F32Pipeline];\n            [encoder setBytes:&kv_elements length:sizeof(kv_elements) atIndex:0];\n            [encoder setBuffer:next_kv_half_buffer offset:0 atIndex:1];\n            [encoder setBuffer:next_raw_cache_buffer\n                         offset:raw_cache_target_row*kv_dim*sizeof(float) atIndex:2];\n            [encoder dispatchThreadgroups:MTLSizeMake(conversion_groups,1,1)\n                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];",
+      "after": "            // A 1K batch leaves exactly its final 128 rows in the raw ring.\n            const uint32_t raw_copy_rows = MIN(rows, (uint32_t)raw_cache_rows);\n            const uint32_t raw_copy_elements = raw_copy_rows*kv_dim;\n            const NSUInteger raw_source_row = rows-raw_copy_rows;\n            const NSUInteger raw_target_row =\n                (position_start+raw_source_row)%raw_cache_rows;\n            [encoder setComputePipelineState:context.cpyF16F32Pipeline];\n            [encoder setBytes:&raw_copy_elements length:sizeof(raw_copy_elements) atIndex:0];\n            [encoder setBuffer:next_kv_half_buffer\n                         offset:raw_source_row*kv_dim*sizeof(uint16_t) atIndex:1];\n            [encoder setBuffer:next_raw_cache_buffer\n                         offset:raw_target_row*kv_dim*sizeof(float) atIndex:2];\n            [encoder dispatchThreadgroups:MTLSizeMake((raw_copy_elements+1023u)/1024u,1,1)\n                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];"
+    },
+    {
+      "before": "             threadsPerThreadgroup:MTLSizeMake(256,1,1)];\n        [encoder setComputePipelineState:context.routerHashRowsBatchPipeline];\n        [encoder setBuffer:model_buffers[18] offset:inner[18] atIndex:0];\n        [encoder setBuffer:token_buffer offset:0 atIndex:1];\n        [encoder setBuffer:router_selected_buffer offset:0 atIndex:2];\n        [encoder dispatchThreads:MTLSizeMake(rows,1,1)\n             threadsPerThreadgroup:MTLSizeMake(rows,1,1)];\n",
+      "after": "             threadsPerThreadgroup:MTLSizeMake(256,1,1)];\n        [encoder setComputePipelineState:context.routerHashRowsBatchPipeline];\n        [encoder setBuffer:model_buffers[18] offset:inner[18] atIndex:0];\n        [encoder setBuffer:token_buffer offset:0 atIndex:1];\n        [encoder setBuffer:router_selected_buffer offset:0 atIndex:2];\n        [encoder dispatchThreads:MTLSizeMake(rows,1,1)\n             threadsPerThreadgroup:MTLSizeMake(MIN(rows,256u),1,1)];\n"
+    },
+    {
+      "before": "        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)\n             threadsPerThreadgroup:MTLSizeMake(n_used,1,1)];\n        [encoder setComputePipelineState:context.routerClampSumsBatchPipeline];\n        [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:0];\n        [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:1];\n        [encoder dispatchThreads:MTLSizeMake(rows,1,1)\n             threadsPerThreadgroup:MTLSizeMake(rows,1,1)];\n",
+      "after": "        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)\n             threadsPerThreadgroup:MTLSizeMake(n_used,1,1)];\n        [encoder setComputePipelineState:context.routerClampSumsBatchPipeline];\n        [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:0];\n        [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:1];\n        [encoder dispatchThreads:MTLSizeMake(rows,1,1)\n             threadsPerThreadgroup:MTLSizeMake(MIN(rows,256u),1,1)];\n"
+    },
+    {
+      "before": "                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];\n            [encoder setComputePipelineState:context.routerHashRowsBatchPipeline];\n            [encoder setBuffer:model_buffers[42] offset:inner[42] atIndex:0];\n            [encoder setBuffer:token_buffer offset:0 atIndex:1];\n            [encoder setBuffer:next_router_selected_buffer offset:0 atIndex:2];\n            [encoder dispatchThreads:MTLSizeMake(rows,1,1)\n                 threadsPerThreadgroup:MTLSizeMake(rows,1,1)];\n",
+      "after": "                 threadsPerThreadgroup:MTLSizeMake(256,1,1)];\n            [encoder setComputePipelineState:context.routerHashRowsBatchPipeline];\n            [encoder setBuffer:model_buffers[42] offset:inner[42] atIndex:0];\n            [encoder setBuffer:token_buffer offset:0 atIndex:1];\n            [encoder setBuffer:next_router_selected_buffer offset:0 atIndex:2];\n            [encoder dispatchThreads:MTLSizeMake(rows,1,1)\n                 threadsPerThreadgroup:MTLSizeMake(MIN(rows,256u),1,1)];\n"
+    },
+    {
+      "before": "            [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)\n                 threadsPerThreadgroup:MTLSizeMake(n_used,1,1)];\n            [encoder setComputePipelineState:context.routerClampSumsBatchPipeline];\n            [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:0];\n            [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:1];\n            [encoder dispatchThreads:MTLSizeMake(rows,1,1)\n                 threadsPerThreadgroup:MTLSizeMake(rows,1,1)];\n",
+      "after": "            [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)\n                 threadsPerThreadgroup:MTLSizeMake(n_used,1,1)];\n            [encoder setComputePipelineState:context.routerClampSumsBatchPipeline];\n            [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:0];\n            [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:1];\n            [encoder dispatchThreads:MTLSizeMake(rows,1,1)\n                 threadsPerThreadgroup:MTLSizeMake(MIN(rows,256u),1,1)];\n"
+    }
+  ]
+}

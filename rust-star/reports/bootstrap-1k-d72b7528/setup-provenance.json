@@ -1,0 +1,29 @@
+{
+  "utc": "2026-09-12T07:25:22.307431+00:00",
+  "script_sha256": "085e5a648aeec42cc098f8b90d514cc0201912dcb3c6afe284005fa68d29cf9e",
+  "old_sources": {
+    "engine-runner.py": "417e0ec002080039827738c499088df1928e4a7275ae432f625d2de10a3e8354",
+    "engine-audit.py": "76b7f86a780c06d9d9a2ac4c6dc4a2f386d562af7effa4d97fdce2203f34a493",
+    "run-validation.py": "252e5ec1203332f1031fad0c668431015bccec09d20c1f1de567fdb6c9d67252",
+    "audit-profile.py": "c51ef2effa8fd173cbd0d8d332ab9fba1a277a55bbeb19525f49861bf455a351",
+    "audit-ring.py": "809c3a73bd42aeab66e06eac977c03946ca2127cddd1bdb3354f38c20084c75a",
+    "select-diagnostic.py": "b2e5e80e1c4f0105cbcfecb4fb07b37ee54584279caab08ace55273d9cddd315",
+    "router-probe.m": "67964ca987a265c5085af01fc259e201ec4fee4fc38b25565471244a710e46c2"
+  },
+  "files": {
+    "ffn_router.metal": "9ccae569e372358381ca18860c2cc039d69aa2b82b1e0601bef78ccef4d43d69",
+    "plan.json": "be1282bb3a2961fb4c78793b94e740c69043933a5beaca4f7417fd0301258138",
+    "engine-runner.py": "f0b73b995726f34a4998686546c176a808aca6b6ac88d7a81a8d515a3cfbcdb8",
+    "engine-plan.json": "1dfbd966db7af3ac22fa3da9f4f48f472c35794b00a3ac572e6ac2020f26a0cf",
+    "prepare-source.py": "2283829381ab746c5433a10898fe05a5f27f6fa21d78259915808cf82a2b8f06",
+    "router-probe.m": "8b20c690d0b03ec1dfc2644a9a9cf806960c854e940fd1f03874ee52f20328ea",
+    "run-validation.py": "1865d1a710db73089f31b5c2ce5d7f0de132812b997b7b99cf521b46feccd3c4",
+    "engine-audit.py": "fed3626938d93427713f277a5da3f7f2afe69272b03c70dc81a8effd03ab69e1",
+    "select-diagnostic.py": "7069d0a85937654a1250a4e555997ca6c43d7806f802789129ea46f25e270f8f",
+    "design.md": "ae0719a5dd2df6960e377db2485e5ec17a79ea5f17b07d83b0237c0a829ec0c4",
+    "baseline-rust-star": "d8c3919ed98281b36d1f9446c243d94655f416ebaa1a144778c5893ffaea161e",
+    "build-and-freeze.py": "06b5abcfd3b1c703cf612192d989f9260491ae83d698b74f18ae6f7bdf9a23c7",
+    "audit-profile.py": "c51ef2effa8fd173cbd0d8d332ab9fba1a277a55bbeb19525f49861bf455a351",
+    "audit-ring.py": "14caf71489bfbeec4f73b6ba0e8f4a4a98488eeaa26b90a2c0962ef2c400c532"
+  }
+}
