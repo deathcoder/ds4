@@ -6218,7 +6218,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         [encoder setBuffer:token_buffer offset:0 atIndex:1];
         [encoder setBuffer:router_selected_buffer offset:0 atIndex:2];
         [encoder dispatchThreads:MTLSizeMake(rows,1,1)
-             threadsPerThreadgroup:MTLSizeMake(rows,1,1)];
+             threadsPerThreadgroup:MTLSizeMake(MIN(rows,256u),1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:router_selected_buffer offset:0 atIndex:1];
@@ -6237,7 +6237,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:0];
         [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:1];
         [encoder dispatchThreads:MTLSizeMake(rows,1,1)
-             threadsPerThreadgroup:MTLSizeMake(rows,1,1)];
+             threadsPerThreadgroup:MTLSizeMake(MIN(rows,256u),1,1)];
         [encoder setComputePipelineState:context.routerDivideBatchPipeline];
         [encoder setBuffer:router_weights_buffer offset:0 atIndex:0];
         [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:1];
@@ -6640,7 +6640,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
             [encoder setBuffer:token_buffer offset:0 atIndex:1];
             [encoder setBuffer:next_router_selected_buffer offset:0 atIndex:2];
             [encoder dispatchThreads:MTLSizeMake(rows,1,1)
-                 threadsPerThreadgroup:MTLSizeMake(rows,1,1)];
+                 threadsPerThreadgroup:MTLSizeMake(MIN(rows,256u),1,1)];
             [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
             [encoder setBuffer:next_router_probs_buffer offset:0 atIndex:0];
             [encoder setBuffer:next_router_selected_buffer offset:0 atIndex:1];
@@ -6659,7 +6659,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
             [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:0];
             [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:1];
             [encoder dispatchThreads:MTLSizeMake(rows,1,1)
-                 threadsPerThreadgroup:MTLSizeMake(rows,1,1)];
+                 threadsPerThreadgroup:MTLSizeMake(MIN(rows,256u),1,1)];
             [encoder setComputePipelineState:context.routerDivideBatchPipeline];
             [encoder setBuffer:next_router_weights_buffer offset:0 atIndex:0];
             [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:1];

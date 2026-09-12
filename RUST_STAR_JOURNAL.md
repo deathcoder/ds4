@@ -18,6 +18,25 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-12 — Preserve wide-bootstrap failure and bound router dispatches
+
+- Candidate 7b4b76ac passed 320 host tests and forced native build, then failed
+  its first 12K internal model gate. All initial prefix layers 0–42 were exact;
+  the first wide chunk at 4096 diverged at layer 0 final HC. Actual checksum
+  18a5296a9c248c1c versus expected 8bda50b3f5ec5e19. The queue stopped before
+  either 32K run or performance. Preserve wide-bootstrap/ unchanged.
+- Source inspection found four hash-row/clamp-sum launches requesting 4096
+  threads per group. Actual compiled Metal pipelines permit 1024 each. A
+  standalone test of the unchanged shader kernels passes every selected ID
+  and FP32 clamp word at 32, 64 and 4096 rows (29,344 output words plus 96
+  guards) with MIN(rows,256) threads per group. This proves an invalid launch
+  and its local repair, not yet the full-model cause or C0 acceptance.
+- New attempt wide-bootstrap-router-bound/ has a separate prospective plan
+  retaining all original exactness and performance thresholds. Repair only
+  these four host dispatch dimensions; short schedules remain identical and
+  all three edited source files restore completely to accepted 4ced6ee8.
+  Build and the full frozen validation queue must pass before any timing.
+
 ## 2026-09-12 — Select native wide bootstrap after current-profile acceptance
 
 - The unchanged 4ced6ee8 runtime passes the new normal-output profiled 32K/128
@@ -4855,16 +4874,16 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-12)
 
-- ACTIVE: autonomous milestone sequence requested 2026-09-12. Continue through
-  complete milestones; do not stop at individual handoffs. The fresh 32K/128
-  profile of unchanged runtime 4ced6ee8 passes all full-output and counter checks
-  in rust-star/.work/autonomous-prefill-a46dfe8b/. Bootstrap ingress is 31.943s,
-  16.27% of recorded stage GPU time. The scoped native 4K bootstrap candidate
-  is implemented under wide-bootstrap/ there. All 320 release host tests pass;
-  the forced native build is finishing. Next freeze its exact executable and
-  run the prospective 12K internal, full normal 32K and profiled 32K queue,
-  then whole-engine pairs if the diagnostic selection passes. Preserve the
-  first compile-only failure and all source/inverse-edit evidence.
+- ACTIVE: autonomous milestone sequence requested 2026-09-12. The fresh
+  accepted-runtime 32K profile passes; bootstrap costs 31.943s / 16.27%.
+  Candidate 7b4b76ac failed the first 12K internal gate at chunk4096/layer0 HC;
+  every prefix layer was exact. Its queue stopped and all evidence remains in
+  .work/autonomous-prefill-a46dfe8b/wide-bootstrap/. Four illegal 4096-thread
+  router groups were identified; both compiled pipelines allow only 1024.
+  A standalone 32/64/4096-row exact/guard probe passes the 256-thread repair.
+  New attempt wide-bootstrap-router-bound/ preserves the original gates.
+  Next build/freeze this host-only repair, then 12K/32K C0/profile and engine
+  pairs only if all diagnostic gates pass. Continue after milestone closure.
 
 - COMPLETE: attention-output whole-engine milestone. Candidate 4ced6ee8 is
   retained. Report rust-star/reports/attention-output-engine-4ced6ee8/README.md.
