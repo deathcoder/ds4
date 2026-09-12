@@ -5,6 +5,24 @@ use crate::model::MappedModel;
 use crate::{Error, Result};
 use std::io::Write;
 
+// Rust 1.74 predates array::each_ref/each_mut. These safe adapters borrow
+// elements in index order without cloning, moving or allocating their contents.
+trait ArrayBorrows<T, const N: usize> {
+    fn array_refs(&self) -> [&T; N];
+    fn array_muts(&mut self) -> [&mut T; N];
+}
+
+impl<T, const N: usize> ArrayBorrows<T, N> for [T; N] {
+    fn array_refs(&self) -> [&T; N] {
+        std::array::from_fn(|index| &self[index])
+    }
+
+    fn array_muts(&mut self) -> [&mut T; N] {
+        let mut elements = self.iter_mut();
+        std::array::from_fn(|_| elements.next().expect("array iterator has N elements"))
+    }
+}
+
 pub const PROBE_SCHEMA: &str = "rust-star-metal-dispatch-probe-v1";
 pub const EMBEDDING_PROBE_SCHEMA: &str = "rust-star-f16-embedding-probe-v1";
 pub const PROJECTION_PROBE_SCHEMA: &str = "rust-star-q8-0-projection-probe-v1";
@@ -6945,7 +6963,7 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
                     || report
                         .prefill_transformer_layer_gpu_ms
                         .as_ref()
-                        .is_none_or(|layers| {
+                        .map_or(true, |layers| {
                             (values[0] + values[1] - layers[2]).abs() > 1.0e-3
                                 || (values[2] + values[3] - layers[3]).abs() > 1.0e-3
                         })
@@ -6961,7 +6979,7 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
                     || report
                         .prefill_representative_stage_gpu_ms
                         .as_ref()
-                        .is_none_or(|stages| {
+                        .map_or(true, |stages| {
                             (values[..5].iter().sum::<f64>() - stages[0]).abs() > 1.0e-3
                                 || (values[5..].iter().sum::<f64>() - stages[2]).abs() > 1.0e-3
                         })
@@ -10083,15 +10101,15 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer3_attention_output_checksum != PREFILL_LAYER3_ATTENTION_OUTPUT_CHECKSUM
         || report.layer3_after_attention_hc_checksum != PREFILL_LAYER3_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer3_after_ffn_hc_checksum != PREFILL_LAYER3_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer4_qkv_checksums != layer4_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer4_qkv_checksums != layer4_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer4_compressor_checksums
             != layer4_compressor
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor))
         || report.layer4_attention_output_checksum != PREFILL_LAYER4_ATTENTION_OUTPUT_CHECKSUM
         || report.layer4_after_attention_hc_checksum != PREFILL_LAYER4_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer4_after_ffn_hc_checksum != PREFILL_LAYER4_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer5_qkv_checksums != layer5_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer5_qkv_checksums != layer5_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer5_compressor_checksums
             != [
                 checksum_f32(&layer5_compressor.0),
@@ -10101,15 +10119,15 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer5_attention_output_checksum != PREFILL_LAYER5_ATTENTION_OUTPUT_CHECKSUM
         || report.layer5_after_attention_hc_checksum != PREFILL_LAYER5_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer5_after_ffn_hc_checksum != PREFILL_LAYER5_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer6_qkv_checksums != layer6_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer6_qkv_checksums != layer6_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer6_compressor_checksums
             != layer6_compressor
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor))
         || report.layer6_attention_output_checksum != PREFILL_LAYER6_ATTENTION_OUTPUT_CHECKSUM
         || report.layer6_after_attention_hc_checksum != PREFILL_LAYER6_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer6_after_ffn_hc_checksum != PREFILL_LAYER6_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer7_qkv_checksums != layer7_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer7_qkv_checksums != layer7_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer7_compressor_checksums
             != [
                 checksum_f32(&layer7_compressor.0),
@@ -10119,15 +10137,15 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer7_attention_output_checksum != PREFILL_LAYER7_ATTENTION_OUTPUT_CHECKSUM
         || report.layer7_after_attention_hc_checksum != PREFILL_LAYER7_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer7_after_ffn_hc_checksum != PREFILL_LAYER7_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer8_qkv_checksums != layer8_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer8_qkv_checksums != layer8_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer8_compressor_checksums
             != layer8_compressor
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor))
         || report.layer8_attention_output_checksum != PREFILL_LAYER8_ATTENTION_OUTPUT_CHECKSUM
         || report.layer8_after_attention_hc_checksum != PREFILL_LAYER8_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer8_after_ffn_hc_checksum != PREFILL_LAYER8_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer9_qkv_checksums != layer9_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer9_qkv_checksums != layer9_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer9_compressor_checksums
             != [
                 checksum_f32(&layer9_compressor.0),
@@ -10137,15 +10155,17 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer9_attention_output_checksum != PREFILL_LAYER9_ATTENTION_OUTPUT_CHECKSUM
         || report.layer9_after_attention_hc_checksum != PREFILL_LAYER9_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer9_after_ffn_hc_checksum != PREFILL_LAYER9_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer10_qkv_checksums != layer10_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer10_qkv_checksums
+            != layer10_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer10_compressor_checksums
             != layer10_compressor
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor))
         || report.layer10_attention_output_checksum != PREFILL_LAYER10_ATTENTION_OUTPUT_CHECKSUM
         || report.layer10_after_attention_hc_checksum != PREFILL_LAYER10_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer10_after_ffn_hc_checksum != PREFILL_LAYER10_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer11_qkv_checksums != layer11_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer11_qkv_checksums
+            != layer11_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer11_compressor_checksums
             != [
                 checksum_f32(&layer11_compressor.0),
@@ -10155,15 +10175,17 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer11_attention_output_checksum != PREFILL_LAYER11_ATTENTION_OUTPUT_CHECKSUM
         || report.layer11_after_attention_hc_checksum != PREFILL_LAYER11_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer11_after_ffn_hc_checksum != PREFILL_LAYER11_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer12_qkv_checksums != layer12_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer12_qkv_checksums
+            != layer12_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer12_compressor_checksums
             != layer12_compressor
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor))
         || report.layer12_attention_output_checksum != PREFILL_LAYER12_ATTENTION_OUTPUT_CHECKSUM
         || report.layer12_after_attention_hc_checksum != PREFILL_LAYER12_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer12_after_ffn_hc_checksum != PREFILL_LAYER12_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer13_qkv_checksums != layer13_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer13_qkv_checksums
+            != layer13_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer13_compressor_checksums
             != [
                 checksum_f32(&layer13_compressor.0),
@@ -10173,15 +10195,17 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer13_attention_output_checksum != PREFILL_LAYER13_ATTENTION_OUTPUT_CHECKSUM
         || report.layer13_after_attention_hc_checksum != PREFILL_LAYER13_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer13_after_ffn_hc_checksum != PREFILL_LAYER13_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer14_qkv_checksums != layer14_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer14_qkv_checksums
+            != layer14_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer14_compressor_checksums
             != layer14_compressor
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor))
         || report.layer14_attention_output_checksum != PREFILL_LAYER14_ATTENTION_OUTPUT_CHECKSUM
         || report.layer14_after_attention_hc_checksum != PREFILL_LAYER14_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer14_after_ffn_hc_checksum != PREFILL_LAYER14_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer15_qkv_checksums != layer15_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer15_qkv_checksums
+            != layer15_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer15_compressor_checksums
             != [
                 checksum_f32(&layer15_compressor.0),
@@ -10191,15 +10215,17 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer15_attention_output_checksum != PREFILL_LAYER15_ATTENTION_OUTPUT_CHECKSUM
         || report.layer15_after_attention_hc_checksum != PREFILL_LAYER15_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer15_after_ffn_hc_checksum != PREFILL_LAYER15_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer16_qkv_checksums != layer16_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer16_qkv_checksums
+            != layer16_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer16_compressor_checksums
             != layer16_compressor
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor))
         || report.layer16_attention_output_checksum != PREFILL_LAYER16_ATTENTION_OUTPUT_CHECKSUM
         || report.layer16_after_attention_hc_checksum != PREFILL_LAYER16_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer16_after_ffn_hc_checksum != PREFILL_LAYER16_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer17_qkv_checksums != layer17_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer17_qkv_checksums
+            != layer17_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer17_compressor_checksums
             != [
                 checksum_f32(&layer17_compressor.0),
@@ -10209,15 +10235,17 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer17_attention_output_checksum != PREFILL_LAYER17_ATTENTION_OUTPUT_CHECKSUM
         || report.layer17_after_attention_hc_checksum != PREFILL_LAYER17_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer17_after_ffn_hc_checksum != PREFILL_LAYER17_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer18_qkv_checksums != layer18_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer18_qkv_checksums
+            != layer18_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer18_compressor_checksums
             != layer18_compressor
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor))
         || report.layer18_attention_output_checksum != PREFILL_LAYER18_ATTENTION_OUTPUT_CHECKSUM
         || report.layer18_after_attention_hc_checksum != PREFILL_LAYER18_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer18_after_ffn_hc_checksum != PREFILL_LAYER18_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer19_qkv_checksums != layer19_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer19_qkv_checksums
+            != layer19_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer19_compressor_checksums
             != [
                 checksum_f32(&layer19_compressor.0),
@@ -10227,15 +10255,17 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer19_attention_output_checksum != PREFILL_LAYER19_ATTENTION_OUTPUT_CHECKSUM
         || report.layer19_after_attention_hc_checksum != PREFILL_LAYER19_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer19_after_ffn_hc_checksum != PREFILL_LAYER19_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer20_qkv_checksums != layer20_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer20_qkv_checksums
+            != layer20_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer20_compressor_checksums
             != layer20_compressor
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor))
         || report.layer20_attention_output_checksum != PREFILL_LAYER20_ATTENTION_OUTPUT_CHECKSUM
         || report.layer20_after_attention_hc_checksum != PREFILL_LAYER20_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer20_after_ffn_hc_checksum != PREFILL_LAYER20_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer21_qkv_checksums != layer21_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer21_qkv_checksums
+            != layer21_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer21_compressor_checksums
             != [
                 checksum_f32(&layer21_compressor.0),
@@ -10245,15 +10275,17 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer21_attention_output_checksum != PREFILL_LAYER21_ATTENTION_OUTPUT_CHECKSUM
         || report.layer21_after_attention_hc_checksum != PREFILL_LAYER21_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer21_after_ffn_hc_checksum != PREFILL_LAYER21_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer22_qkv_checksums != layer22_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer22_qkv_checksums
+            != layer22_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer22_compressor_checksums
             != layer22_compressor
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor))
         || report.layer22_attention_output_checksum != PREFILL_LAYER22_ATTENTION_OUTPUT_CHECKSUM
         || report.layer22_after_attention_hc_checksum != PREFILL_LAYER22_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer22_after_ffn_hc_checksum != PREFILL_LAYER22_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer23_qkv_checksums != layer23_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer23_qkv_checksums
+            != layer23_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer23_compressor_checksums
             != [
                 checksum_f32(&layer23_compressor.0),
@@ -10263,15 +10295,17 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer23_attention_output_checksum != PREFILL_LAYER23_ATTENTION_OUTPUT_CHECKSUM
         || report.layer23_after_attention_hc_checksum != PREFILL_LAYER23_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer23_after_ffn_hc_checksum != PREFILL_LAYER23_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer24_qkv_checksums != layer24_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer24_qkv_checksums
+            != layer24_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer24_compressor_checksums
             != layer24_compressor
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor))
         || report.layer24_attention_output_checksum != PREFILL_LAYER24_ATTENTION_OUTPUT_CHECKSUM
         || report.layer24_after_attention_hc_checksum != PREFILL_LAYER24_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer24_after_ffn_hc_checksum != PREFILL_LAYER24_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer25_qkv_checksums != layer25_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer25_qkv_checksums
+            != layer25_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer25_compressor_checksums
             != [
                 checksum_f32(&layer25_compressor.0),
@@ -10281,15 +10315,17 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer25_attention_output_checksum != PREFILL_LAYER25_ATTENTION_OUTPUT_CHECKSUM
         || report.layer25_after_attention_hc_checksum != PREFILL_LAYER25_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer25_after_ffn_hc_checksum != PREFILL_LAYER25_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer26_qkv_checksums != layer26_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer26_qkv_checksums
+            != layer26_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer26_compressor_checksums
             != layer26_compressor
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor))
         || report.layer26_attention_output_checksum != PREFILL_LAYER26_ATTENTION_OUTPUT_CHECKSUM
         || report.layer26_after_attention_hc_checksum != PREFILL_LAYER26_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer26_after_ffn_hc_checksum != PREFILL_LAYER26_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer27_qkv_checksums != layer27_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer27_qkv_checksums
+            != layer27_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer27_compressor_checksums
             != [
                 checksum_f32(&layer27_compressor.0),
@@ -10299,15 +10335,17 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer27_attention_output_checksum != PREFILL_LAYER27_ATTENTION_OUTPUT_CHECKSUM
         || report.layer27_after_attention_hc_checksum != PREFILL_LAYER27_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer27_after_ffn_hc_checksum != PREFILL_LAYER27_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer28_qkv_checksums != layer28_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer28_qkv_checksums
+            != layer28_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer28_compressor_checksums
             != layer28_compressor
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor))
         || report.layer28_attention_output_checksum != PREFILL_LAYER28_ATTENTION_OUTPUT_CHECKSUM
         || report.layer28_after_attention_hc_checksum != PREFILL_LAYER28_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer28_after_ffn_hc_checksum != PREFILL_LAYER28_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer29_qkv_checksums != layer29_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer29_qkv_checksums
+            != layer29_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer29_compressor_checksums
             != [
                 checksum_f32(&layer29_compressor.0),
@@ -10317,15 +10355,17 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer29_attention_output_checksum != PREFILL_LAYER29_ATTENTION_OUTPUT_CHECKSUM
         || report.layer29_after_attention_hc_checksum != PREFILL_LAYER29_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer29_after_ffn_hc_checksum != PREFILL_LAYER29_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer30_qkv_checksums != layer30_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer30_qkv_checksums
+            != layer30_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer30_compressor_checksums
             != layer30_compressor
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor))
         || report.layer30_attention_output_checksum != PREFILL_LAYER30_ATTENTION_OUTPUT_CHECKSUM
         || report.layer30_after_attention_hc_checksum != PREFILL_LAYER30_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer30_after_ffn_hc_checksum != PREFILL_LAYER30_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer31_qkv_checksums != layer31_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer31_qkv_checksums
+            != layer31_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer31_compressor_checksums
             != [
                 checksum_f32(&layer31_compressor.0),
@@ -10335,15 +10375,17 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer31_attention_output_checksum != PREFILL_LAYER31_ATTENTION_OUTPUT_CHECKSUM
         || report.layer31_after_attention_hc_checksum != PREFILL_LAYER31_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer31_after_ffn_hc_checksum != PREFILL_LAYER31_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer32_qkv_checksums != layer32_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer32_qkv_checksums
+            != layer32_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer32_compressor_checksums
             != layer32_compressor
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor))
         || report.layer32_attention_output_checksum != PREFILL_LAYER32_ATTENTION_OUTPUT_CHECKSUM
         || report.layer32_after_attention_hc_checksum != PREFILL_LAYER32_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer32_after_ffn_hc_checksum != PREFILL_LAYER32_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer33_qkv_checksums != layer33_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer33_qkv_checksums
+            != layer33_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer33_compressor_checksums
             != [
                 checksum_f32(&layer33_compressor.0),
@@ -10353,15 +10395,17 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer33_attention_output_checksum != PREFILL_LAYER33_ATTENTION_OUTPUT_CHECKSUM
         || report.layer33_after_attention_hc_checksum != PREFILL_LAYER33_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer33_after_ffn_hc_checksum != PREFILL_LAYER33_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer34_qkv_checksums != layer34_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer34_qkv_checksums
+            != layer34_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer34_compressor_checksums
             != layer34_compressor
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor))
         || report.layer34_attention_output_checksum != PREFILL_LAYER34_ATTENTION_OUTPUT_CHECKSUM
         || report.layer34_after_attention_hc_checksum != PREFILL_LAYER34_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer34_after_ffn_hc_checksum != PREFILL_LAYER34_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer35_qkv_checksums != layer35_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer35_qkv_checksums
+            != layer35_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer35_compressor_checksums
             != [
                 checksum_f32(&layer35_compressor.0),
@@ -10371,15 +10415,17 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer35_attention_output_checksum != PREFILL_LAYER35_ATTENTION_OUTPUT_CHECKSUM
         || report.layer35_after_attention_hc_checksum != PREFILL_LAYER35_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer35_after_ffn_hc_checksum != PREFILL_LAYER35_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer36_qkv_checksums != layer36_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer36_qkv_checksums
+            != layer36_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer36_compressor_checksums
             != layer36_compressor
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor))
         || report.layer36_attention_output_checksum != PREFILL_LAYER36_ATTENTION_OUTPUT_CHECKSUM
         || report.layer36_after_attention_hc_checksum != PREFILL_LAYER36_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer36_after_ffn_hc_checksum != PREFILL_LAYER36_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer37_qkv_checksums != layer37_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer37_qkv_checksums
+            != layer37_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer37_compressor_checksums
             != [
                 checksum_f32(&layer37_compressor.0),
@@ -10389,15 +10435,17 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer37_attention_output_checksum != PREFILL_LAYER37_ATTENTION_OUTPUT_CHECKSUM
         || report.layer37_after_attention_hc_checksum != PREFILL_LAYER37_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer37_after_ffn_hc_checksum != PREFILL_LAYER37_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer38_qkv_checksums != layer38_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer38_qkv_checksums
+            != layer38_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer38_compressor_checksums
             != layer38_compressor
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor))
         || report.layer38_attention_output_checksum != PREFILL_LAYER38_ATTENTION_OUTPUT_CHECKSUM
         || report.layer38_after_attention_hc_checksum != PREFILL_LAYER38_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer38_after_ffn_hc_checksum != PREFILL_LAYER38_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer39_qkv_checksums != layer39_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer39_qkv_checksums
+            != layer39_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer39_compressor_checksums
             != [
                 checksum_f32(&layer39_compressor.0),
@@ -10407,15 +10455,17 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer39_attention_output_checksum != PREFILL_LAYER39_ATTENTION_OUTPUT_CHECKSUM
         || report.layer39_after_attention_hc_checksum != PREFILL_LAYER39_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer39_after_ffn_hc_checksum != PREFILL_LAYER39_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer40_qkv_checksums != layer40_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer40_qkv_checksums
+            != layer40_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer40_compressor_checksums
             != layer40_compressor
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor))
         || report.layer40_attention_output_checksum != PREFILL_LAYER40_ATTENTION_OUTPUT_CHECKSUM
         || report.layer40_after_attention_hc_checksum != PREFILL_LAYER40_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer40_after_ffn_hc_checksum != PREFILL_LAYER40_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer41_qkv_checksums != layer41_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer41_qkv_checksums
+            != layer41_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer41_compressor_checksums
             != [
                 checksum_f32(&layer41_compressor.0),
@@ -10425,10 +10475,11 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
         || report.layer41_attention_output_checksum != PREFILL_LAYER41_ATTENTION_OUTPUT_CHECKSUM
         || report.layer41_after_attention_hc_checksum != PREFILL_LAYER41_HC_ATTN_POST_FULL_CHECKSUM
         || report.layer41_after_ffn_hc_checksum != PREFILL_LAYER41_HC_FFN_POST_FULL_CHECKSUM
-        || report.layer42_qkv_checksums != layer42_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+        || report.layer42_qkv_checksums
+            != layer42_qkv.array_refs().map(|tensor| checksum_f32(tensor))
         || report.layer42_compressor_checksums
             != layer42_compressor
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor))
         || report.layer42_attention_output_checksum != PREFILL_LAYER42_ATTENTION_OUTPUT_CHECKSUM
         || report.layer42_after_attention_hc_checksum != PREFILL_LAYER42_HC_ATTN_POST_FULL_CHECKSUM
@@ -34012,7 +34063,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer4_qkv_pointers = actual_layer4_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer4_compressor: [Vec<f32>; 6] = [
             vec![0.0_f32; 512 * 512],
@@ -34047,7 +34098,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer5_qkv_pointers = actual_layer5_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer5_attn_compressed = vec![0.0_f32; 16 * 512];
         let mut actual_layer5_attn_state_kv = vec![0.0_f32; 128 * 512];
@@ -34077,7 +34128,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer6_qkv_pointers = actual_layer6_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer6_compressor: [Vec<f32>; 6] = [
             vec![0.0_f32; 512 * 512],
@@ -34112,7 +34163,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer7_qkv_pointers = actual_layer7_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer7_attn_compressed = vec![0.0_f32; 16 * 512];
         let mut actual_layer7_attn_state_kv = vec![0.0_f32; 128 * 512];
@@ -34142,7 +34193,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer8_qkv_pointers = actual_layer8_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer8_compressor: [Vec<f32>; 6] = [
             vec![0.0_f32; 512 * 512],
@@ -34177,7 +34228,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer9_qkv_pointers = actual_layer9_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer9_attn_compressed = vec![0.0_f32; 16 * 512];
         let mut actual_layer9_attn_state_kv = vec![0.0_f32; 128 * 512];
@@ -34207,7 +34258,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer10_qkv_pointers = actual_layer10_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer10_compressor: [Vec<f32>; 6] = [
             vec![0.0_f32; 512 * 512],
@@ -34242,7 +34293,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer11_qkv_pointers = actual_layer11_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer11_attn_compressed = vec![0.0_f32; 16 * 512];
         let mut actual_layer11_attn_state_kv = vec![0.0_f32; 128 * 512];
@@ -34272,7 +34323,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer12_qkv_pointers = actual_layer12_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer12_compressor: [Vec<f32>; 6] = [
             vec![0.0_f32; 512 * 512],
@@ -34307,7 +34358,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer13_qkv_pointers = actual_layer13_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer13_attn_compressed = vec![0.0_f32; 16 * 512];
         let mut actual_layer13_attn_state_kv = vec![0.0_f32; 128 * 512];
@@ -34337,7 +34388,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer14_qkv_pointers = actual_layer14_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer14_compressor: [Vec<f32>; 6] = [
             vec![0.0_f32; 512 * 512],
@@ -34372,7 +34423,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer15_qkv_pointers = actual_layer15_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer15_attn_compressed = vec![0.0_f32; 16 * 512];
         let mut actual_layer15_attn_state_kv = vec![0.0_f32; 128 * 512];
@@ -34402,7 +34453,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer16_qkv_pointers = actual_layer16_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer16_compressor: [Vec<f32>; 6] = [
             vec![0.0_f32; 512 * 512],
@@ -34437,7 +34488,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer17_qkv_pointers = actual_layer17_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer17_attn_compressed = vec![0.0_f32; 16 * 512];
         let mut actual_layer17_attn_state_kv = vec![0.0_f32; 128 * 512];
@@ -34467,7 +34518,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer18_qkv_pointers = actual_layer18_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer18_compressor: [Vec<f32>; 6] = [
             vec![0.0_f32; 512 * 512],
@@ -34502,7 +34553,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer19_qkv_pointers = actual_layer19_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer19_attn_compressed = vec![0.0_f32; 16 * 512];
         let mut actual_layer19_attn_state_kv = vec![0.0_f32; 128 * 512];
@@ -34532,7 +34583,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer20_qkv_pointers = actual_layer20_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer20_compressor: [Vec<f32>; 6] = [
             vec![0.0_f32; 512 * 512],
@@ -34567,7 +34618,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer21_qkv_pointers = actual_layer21_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer21_attn_compressed = vec![0.0_f32; 16 * 512];
         let mut actual_layer21_attn_state_kv = vec![0.0_f32; 128 * 512];
@@ -34597,7 +34648,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer22_qkv_pointers = actual_layer22_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer22_compressor: [Vec<f32>; 6] = [
             vec![0.0_f32; 512 * 512],
@@ -34632,7 +34683,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer23_qkv_pointers = actual_layer23_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer23_attn_compressed = vec![0.0_f32; 16 * 512];
         let mut actual_layer23_attn_state_kv = vec![0.0_f32; 128 * 512];
@@ -34662,7 +34713,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer24_qkv_pointers = actual_layer24_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer24_compressor: [Vec<f32>; 6] = [
             vec![0.0_f32; 512 * 512],
@@ -34697,7 +34748,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer25_qkv_pointers = actual_layer25_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer25_attn_compressed = vec![0.0_f32; 16 * 512];
         let mut actual_layer25_attn_state_kv = vec![0.0_f32; 128 * 512];
@@ -34727,7 +34778,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer26_qkv_pointers = actual_layer26_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer26_compressor: [Vec<f32>; 6] = [
             vec![0.0_f32; 512 * 512],
@@ -34762,7 +34813,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer27_qkv_pointers = actual_layer27_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer27_attn_compressed = vec![0.0_f32; 16 * 512];
         let mut actual_layer27_attn_state_kv = vec![0.0_f32; 128 * 512];
@@ -34792,7 +34843,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer28_qkv_pointers = actual_layer28_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer28_compressor: [Vec<f32>; 6] = [
             vec![0.0_f32; 512 * 512],
@@ -34827,7 +34878,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer29_qkv_pointers = actual_layer29_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer29_attn_compressed = vec![0.0_f32; 16 * 512];
         let mut actual_layer29_attn_state_kv = vec![0.0_f32; 128 * 512];
@@ -34857,7 +34908,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer30_qkv_pointers = actual_layer30_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer30_compressor: [Vec<f32>; 6] = [
             vec![0.0_f32; 512 * 512],
@@ -34892,7 +34943,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer31_qkv_pointers = actual_layer31_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer31_attn_compressed = vec![0.0_f32; 16 * 512];
         let mut actual_layer31_attn_state_kv = vec![0.0_f32; 128 * 512];
@@ -34922,7 +34973,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer32_qkv_pointers = actual_layer32_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer32_compressor: [Vec<f32>; 6] = [
             vec![0.0_f32; 512 * 512],
@@ -34957,7 +35008,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer33_qkv_pointers = actual_layer33_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer33_attn_compressed = vec![0.0_f32; 16 * 512];
         let mut actual_layer33_attn_state_kv = vec![0.0_f32; 128 * 512];
@@ -34987,7 +35038,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer34_qkv_pointers = actual_layer34_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer34_compressor: [Vec<f32>; 6] = [
             vec![0.0_f32; 512 * 512],
@@ -35022,7 +35073,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer35_qkv_pointers = actual_layer35_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer35_attn_compressed = vec![0.0_f32; 16 * 512];
         let mut actual_layer35_attn_state_kv = vec![0.0_f32; 128 * 512];
@@ -35052,7 +35103,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer36_qkv_pointers = actual_layer36_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer36_compressor: [Vec<f32>; 6] = [
             vec![0.0_f32; 512 * 512],
@@ -35087,7 +35138,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer37_qkv_pointers = actual_layer37_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer37_attn_compressed = vec![0.0_f32; 16 * 512];
         let mut actual_layer37_attn_state_kv = vec![0.0_f32; 128 * 512];
@@ -35117,7 +35168,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer38_qkv_pointers = actual_layer38_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer38_compressor: [Vec<f32>; 6] = [
             vec![0.0_f32; 512 * 512],
@@ -35152,7 +35203,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer39_qkv_pointers = actual_layer39_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer39_attn_compressed = vec![0.0_f32; 16 * 512];
         let mut actual_layer39_attn_state_kv = vec![0.0_f32; 128 * 512];
@@ -35182,7 +35233,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer40_qkv_pointers = actual_layer40_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer40_compressor: [Vec<f32>; 6] = [
             vec![0.0_f32; 512 * 512],
@@ -35217,7 +35268,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer41_qkv_pointers = actual_layer41_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer41_attn_compressed = vec![0.0_f32; 16 * 512];
         let mut actual_layer41_attn_state_kv = vec![0.0_f32; 128 * 512];
@@ -35247,7 +35298,7 @@ mod imp {
             vec![0.0_f32; 32 * 512],
         ];
         let layer42_qkv_pointers = actual_layer42_qkv
-            .each_mut()
+            .array_muts()
             .map(|tensor| tensor.as_mut_ptr());
         let mut actual_layer42_compressor: [Vec<f32>; 6] = [
             vec![0.0_f32; 512 * 512],
@@ -43971,16 +44022,16 @@ mod imp {
                 layer3_after_attention_hc_checksum: checksum_f32(&actual_layer3_after_attention_hc),
                 layer3_after_ffn_hc_checksum: checksum_f32(&actual_layer3_after_ffn_hc),
                 layer4_qkv_checksums: actual_layer4_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer4_compressor_checksums: actual_layer4_compressor
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer4_attention_output_checksum: checksum_f32(&actual_layer4_attention),
                 layer4_after_attention_hc_checksum: checksum_f32(&actual_layer4_after_attention_hc),
                 layer4_after_ffn_hc_checksum: checksum_f32(&actual_layer4_after_ffn_hc),
                 layer5_qkv_checksums: actual_layer5_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer5_compressor_checksums: [
                     checksum_f32(&actual_layer5_attn_compressed),
@@ -43991,16 +44042,16 @@ mod imp {
                 layer5_after_attention_hc_checksum: checksum_f32(&actual_layer5_after_attention_hc),
                 layer5_after_ffn_hc_checksum: checksum_f32(&actual_layer5_after_ffn_hc),
                 layer6_qkv_checksums: actual_layer6_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer6_compressor_checksums: actual_layer6_compressor
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer6_attention_output_checksum: checksum_f32(&actual_layer6_attention),
                 layer6_after_attention_hc_checksum: checksum_f32(&actual_layer6_after_attention_hc),
                 layer6_after_ffn_hc_checksum: checksum_f32(&actual_layer6_after_ffn_hc),
                 layer7_qkv_checksums: actual_layer7_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer7_compressor_checksums: [
                     checksum_f32(&actual_layer7_attn_compressed),
@@ -44011,16 +44062,16 @@ mod imp {
                 layer7_after_attention_hc_checksum: checksum_f32(&actual_layer7_after_attention_hc),
                 layer7_after_ffn_hc_checksum: checksum_f32(&actual_layer7_after_ffn_hc),
                 layer8_qkv_checksums: actual_layer8_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer8_compressor_checksums: actual_layer8_compressor
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer8_attention_output_checksum: checksum_f32(&actual_layer8_attention),
                 layer8_after_attention_hc_checksum: checksum_f32(&actual_layer8_after_attention_hc),
                 layer8_after_ffn_hc_checksum: checksum_f32(&actual_layer8_after_ffn_hc),
                 layer9_qkv_checksums: actual_layer9_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer9_compressor_checksums: [
                     checksum_f32(&actual_layer9_attn_compressed),
@@ -44031,10 +44082,10 @@ mod imp {
                 layer9_after_attention_hc_checksum: checksum_f32(&actual_layer9_after_attention_hc),
                 layer9_after_ffn_hc_checksum: checksum_f32(&actual_layer9_after_ffn_hc),
                 layer10_qkv_checksums: actual_layer10_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer10_compressor_checksums: actual_layer10_compressor
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer10_attention_output_checksum: checksum_f32(&actual_layer10_attention),
                 layer10_after_attention_hc_checksum: checksum_f32(
@@ -44042,7 +44093,7 @@ mod imp {
                 ),
                 layer10_after_ffn_hc_checksum: checksum_f32(&actual_layer10_after_ffn_hc),
                 layer11_qkv_checksums: actual_layer11_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer11_compressor_checksums: [
                     checksum_f32(&actual_layer11_attn_compressed),
@@ -44055,10 +44106,10 @@ mod imp {
                 ),
                 layer11_after_ffn_hc_checksum: checksum_f32(&actual_layer11_after_ffn_hc),
                 layer12_qkv_checksums: actual_layer12_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer12_compressor_checksums: actual_layer12_compressor
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer12_attention_output_checksum: checksum_f32(&actual_layer12_attention),
                 layer12_after_attention_hc_checksum: checksum_f32(
@@ -44066,7 +44117,7 @@ mod imp {
                 ),
                 layer12_after_ffn_hc_checksum: checksum_f32(&actual_layer12_after_ffn_hc),
                 layer13_qkv_checksums: actual_layer13_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer13_compressor_checksums: [
                     checksum_f32(&actual_layer13_attn_compressed),
@@ -44079,10 +44130,10 @@ mod imp {
                 ),
                 layer13_after_ffn_hc_checksum: checksum_f32(&actual_layer13_after_ffn_hc),
                 layer14_qkv_checksums: actual_layer14_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer14_compressor_checksums: actual_layer14_compressor
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer14_attention_output_checksum: checksum_f32(&actual_layer14_attention),
                 layer14_after_attention_hc_checksum: checksum_f32(
@@ -44090,7 +44141,7 @@ mod imp {
                 ),
                 layer14_after_ffn_hc_checksum: checksum_f32(&actual_layer14_after_ffn_hc),
                 layer15_qkv_checksums: actual_layer15_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer15_compressor_checksums: [
                     checksum_f32(&actual_layer15_attn_compressed),
@@ -44103,10 +44154,10 @@ mod imp {
                 ),
                 layer15_after_ffn_hc_checksum: checksum_f32(&actual_layer15_after_ffn_hc),
                 layer16_qkv_checksums: actual_layer16_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer16_compressor_checksums: actual_layer16_compressor
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer16_attention_output_checksum: checksum_f32(&actual_layer16_attention),
                 layer16_after_attention_hc_checksum: checksum_f32(
@@ -44114,7 +44165,7 @@ mod imp {
                 ),
                 layer16_after_ffn_hc_checksum: checksum_f32(&actual_layer16_after_ffn_hc),
                 layer17_qkv_checksums: actual_layer17_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer17_compressor_checksums: [
                     checksum_f32(&actual_layer17_attn_compressed),
@@ -44127,10 +44178,10 @@ mod imp {
                 ),
                 layer17_after_ffn_hc_checksum: checksum_f32(&actual_layer17_after_ffn_hc),
                 layer18_qkv_checksums: actual_layer18_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer18_compressor_checksums: actual_layer18_compressor
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer18_attention_output_checksum: checksum_f32(&actual_layer18_attention),
                 layer18_after_attention_hc_checksum: checksum_f32(
@@ -44138,7 +44189,7 @@ mod imp {
                 ),
                 layer18_after_ffn_hc_checksum: checksum_f32(&actual_layer18_after_ffn_hc),
                 layer19_qkv_checksums: actual_layer19_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer19_compressor_checksums: [
                     checksum_f32(&actual_layer19_attn_compressed),
@@ -44151,10 +44202,10 @@ mod imp {
                 ),
                 layer19_after_ffn_hc_checksum: checksum_f32(&actual_layer19_after_ffn_hc),
                 layer20_qkv_checksums: actual_layer20_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer20_compressor_checksums: actual_layer20_compressor
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer20_attention_output_checksum: checksum_f32(&actual_layer20_attention),
                 layer20_after_attention_hc_checksum: checksum_f32(
@@ -44162,7 +44213,7 @@ mod imp {
                 ),
                 layer20_after_ffn_hc_checksum: checksum_f32(&actual_layer20_after_ffn_hc),
                 layer21_qkv_checksums: actual_layer21_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer21_compressor_checksums: [
                     checksum_f32(&actual_layer21_attn_compressed),
@@ -44175,10 +44226,10 @@ mod imp {
                 ),
                 layer21_after_ffn_hc_checksum: checksum_f32(&actual_layer21_after_ffn_hc),
                 layer22_qkv_checksums: actual_layer22_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer22_compressor_checksums: actual_layer22_compressor
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer22_attention_output_checksum: checksum_f32(&actual_layer22_attention),
                 layer22_after_attention_hc_checksum: checksum_f32(
@@ -44186,7 +44237,7 @@ mod imp {
                 ),
                 layer22_after_ffn_hc_checksum: checksum_f32(&actual_layer22_after_ffn_hc),
                 layer23_qkv_checksums: actual_layer23_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer23_compressor_checksums: [
                     checksum_f32(&actual_layer23_attn_compressed),
@@ -44199,10 +44250,10 @@ mod imp {
                 ),
                 layer23_after_ffn_hc_checksum: checksum_f32(&actual_layer23_after_ffn_hc),
                 layer24_qkv_checksums: actual_layer24_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer24_compressor_checksums: actual_layer24_compressor
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer24_attention_output_checksum: checksum_f32(&actual_layer24_attention),
                 layer24_after_attention_hc_checksum: checksum_f32(
@@ -44210,7 +44261,7 @@ mod imp {
                 ),
                 layer24_after_ffn_hc_checksum: checksum_f32(&actual_layer24_after_ffn_hc),
                 layer25_qkv_checksums: actual_layer25_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer25_compressor_checksums: [
                     checksum_f32(&actual_layer25_attn_compressed),
@@ -44223,10 +44274,10 @@ mod imp {
                 ),
                 layer25_after_ffn_hc_checksum: checksum_f32(&actual_layer25_after_ffn_hc),
                 layer26_qkv_checksums: actual_layer26_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer26_compressor_checksums: actual_layer26_compressor
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer26_attention_output_checksum: checksum_f32(&actual_layer26_attention),
                 layer26_after_attention_hc_checksum: checksum_f32(
@@ -44234,7 +44285,7 @@ mod imp {
                 ),
                 layer26_after_ffn_hc_checksum: checksum_f32(&actual_layer26_after_ffn_hc),
                 layer27_qkv_checksums: actual_layer27_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer27_compressor_checksums: [
                     checksum_f32(&actual_layer27_attn_compressed),
@@ -44247,10 +44298,10 @@ mod imp {
                 ),
                 layer27_after_ffn_hc_checksum: checksum_f32(&actual_layer27_after_ffn_hc),
                 layer28_qkv_checksums: actual_layer28_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer28_compressor_checksums: actual_layer28_compressor
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer28_attention_output_checksum: checksum_f32(&actual_layer28_attention),
                 layer28_after_attention_hc_checksum: checksum_f32(
@@ -44258,7 +44309,7 @@ mod imp {
                 ),
                 layer28_after_ffn_hc_checksum: checksum_f32(&actual_layer28_after_ffn_hc),
                 layer29_qkv_checksums: actual_layer29_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer29_compressor_checksums: [
                     checksum_f32(&actual_layer29_attn_compressed),
@@ -44271,10 +44322,10 @@ mod imp {
                 ),
                 layer29_after_ffn_hc_checksum: checksum_f32(&actual_layer29_after_ffn_hc),
                 layer30_qkv_checksums: actual_layer30_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer30_compressor_checksums: actual_layer30_compressor
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer30_attention_output_checksum: checksum_f32(&actual_layer30_attention),
                 layer30_after_attention_hc_checksum: checksum_f32(
@@ -44282,7 +44333,7 @@ mod imp {
                 ),
                 layer30_after_ffn_hc_checksum: checksum_f32(&actual_layer30_after_ffn_hc),
                 layer31_qkv_checksums: actual_layer31_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer31_compressor_checksums: [
                     checksum_f32(&actual_layer31_attn_compressed),
@@ -44295,10 +44346,10 @@ mod imp {
                 ),
                 layer31_after_ffn_hc_checksum: checksum_f32(&actual_layer31_after_ffn_hc),
                 layer32_qkv_checksums: actual_layer32_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer32_compressor_checksums: actual_layer32_compressor
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer32_attention_output_checksum: checksum_f32(&actual_layer32_attention),
                 layer32_after_attention_hc_checksum: checksum_f32(
@@ -44306,7 +44357,7 @@ mod imp {
                 ),
                 layer32_after_ffn_hc_checksum: checksum_f32(&actual_layer32_after_ffn_hc),
                 layer33_qkv_checksums: actual_layer33_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer33_compressor_checksums: [
                     checksum_f32(&actual_layer33_attn_compressed),
@@ -44319,10 +44370,10 @@ mod imp {
                 ),
                 layer33_after_ffn_hc_checksum: checksum_f32(&actual_layer33_after_ffn_hc),
                 layer34_qkv_checksums: actual_layer34_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer34_compressor_checksums: actual_layer34_compressor
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer34_attention_output_checksum: checksum_f32(&actual_layer34_attention),
                 layer34_after_attention_hc_checksum: checksum_f32(
@@ -44330,7 +44381,7 @@ mod imp {
                 ),
                 layer34_after_ffn_hc_checksum: checksum_f32(&actual_layer34_after_ffn_hc),
                 layer35_qkv_checksums: actual_layer35_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer35_compressor_checksums: [
                     checksum_f32(&actual_layer35_attn_compressed),
@@ -44343,10 +44394,10 @@ mod imp {
                 ),
                 layer35_after_ffn_hc_checksum: checksum_f32(&actual_layer35_after_ffn_hc),
                 layer36_qkv_checksums: actual_layer36_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer36_compressor_checksums: actual_layer36_compressor
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer36_attention_output_checksum: checksum_f32(&actual_layer36_attention),
                 layer36_after_attention_hc_checksum: checksum_f32(
@@ -44354,7 +44405,7 @@ mod imp {
                 ),
                 layer36_after_ffn_hc_checksum: checksum_f32(&actual_layer36_after_ffn_hc),
                 layer37_qkv_checksums: actual_layer37_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer37_compressor_checksums: [
                     checksum_f32(&actual_layer37_attn_compressed),
@@ -44367,10 +44418,10 @@ mod imp {
                 ),
                 layer37_after_ffn_hc_checksum: checksum_f32(&actual_layer37_after_ffn_hc),
                 layer38_qkv_checksums: actual_layer38_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer38_compressor_checksums: actual_layer38_compressor
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer38_attention_output_checksum: checksum_f32(&actual_layer38_attention),
                 layer38_after_attention_hc_checksum: checksum_f32(
@@ -44378,7 +44429,7 @@ mod imp {
                 ),
                 layer38_after_ffn_hc_checksum: checksum_f32(&actual_layer38_after_ffn_hc),
                 layer39_qkv_checksums: actual_layer39_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer39_compressor_checksums: [
                     checksum_f32(&actual_layer39_attn_compressed),
@@ -44391,10 +44442,10 @@ mod imp {
                 ),
                 layer39_after_ffn_hc_checksum: checksum_f32(&actual_layer39_after_ffn_hc),
                 layer40_qkv_checksums: actual_layer40_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer40_compressor_checksums: actual_layer40_compressor
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer40_attention_output_checksum: checksum_f32(&actual_layer40_attention),
                 layer40_after_attention_hc_checksum: checksum_f32(
@@ -44402,7 +44453,7 @@ mod imp {
                 ),
                 layer40_after_ffn_hc_checksum: checksum_f32(&actual_layer40_after_ffn_hc),
                 layer41_qkv_checksums: actual_layer41_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer41_compressor_checksums: [
                     checksum_f32(&actual_layer41_attn_compressed),
@@ -44415,10 +44466,10 @@ mod imp {
                 ),
                 layer41_after_ffn_hc_checksum: checksum_f32(&actual_layer41_after_ffn_hc),
                 layer42_qkv_checksums: actual_layer42_qkv
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer42_compressor_checksums: actual_layer42_compressor
-                    .each_ref()
+                    .array_refs()
                     .map(|tensor| checksum_f32(tensor)),
                 layer42_attention_output_checksum: checksum_f32(&actual_layer42_attention),
                 layer42_after_attention_hc_checksum: checksum_f32(
@@ -59623,18 +59674,18 @@ mod tests {
             layer3_after_ffn_hc_checksum: PREFILL_LAYER3_HC_FFN_POST_FULL_CHECKSUM,
             layer4_qkv_checksums: prefill_layer4_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer4_compressor_checksums: prefill_layer4_compressor_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer4_attention_output_checksum: PREFILL_LAYER4_ATTENTION_OUTPUT_CHECKSUM,
             layer4_after_attention_hc_checksum: PREFILL_LAYER4_HC_ATTN_POST_FULL_CHECKSUM,
             layer4_after_ffn_hc_checksum: PREFILL_LAYER4_HC_FFN_POST_FULL_CHECKSUM,
             layer5_qkv_checksums: prefill_layer5_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer5_compressor_checksums: {
                 let fixture = prefill_layer5_compressor_fixture().unwrap();
@@ -59649,18 +59700,18 @@ mod tests {
             layer5_after_ffn_hc_checksum: PREFILL_LAYER5_HC_FFN_POST_FULL_CHECKSUM,
             layer6_qkv_checksums: prefill_layer6_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer6_compressor_checksums: prefill_layer6_compressor_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer6_attention_output_checksum: PREFILL_LAYER6_ATTENTION_OUTPUT_CHECKSUM,
             layer6_after_attention_hc_checksum: PREFILL_LAYER6_HC_ATTN_POST_FULL_CHECKSUM,
             layer6_after_ffn_hc_checksum: PREFILL_LAYER6_HC_FFN_POST_FULL_CHECKSUM,
             layer7_qkv_checksums: prefill_layer7_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer7_compressor_checksums: {
                 let fixture = prefill_layer7_compressor_fixture().unwrap();
@@ -59675,18 +59726,18 @@ mod tests {
             layer7_after_ffn_hc_checksum: PREFILL_LAYER7_HC_FFN_POST_FULL_CHECKSUM,
             layer8_qkv_checksums: prefill_layer8_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer8_compressor_checksums: prefill_layer8_compressor_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer8_attention_output_checksum: PREFILL_LAYER8_ATTENTION_OUTPUT_CHECKSUM,
             layer8_after_attention_hc_checksum: PREFILL_LAYER8_HC_ATTN_POST_FULL_CHECKSUM,
             layer8_after_ffn_hc_checksum: PREFILL_LAYER8_HC_FFN_POST_FULL_CHECKSUM,
             layer9_qkv_checksums: prefill_layer9_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer9_compressor_checksums: {
                 let fixture = prefill_layer9_compressor_fixture().unwrap();
@@ -59701,18 +59752,18 @@ mod tests {
             layer9_after_ffn_hc_checksum: PREFILL_LAYER9_HC_FFN_POST_FULL_CHECKSUM,
             layer10_qkv_checksums: prefill_layer10_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer10_compressor_checksums: prefill_layer10_compressor_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer10_attention_output_checksum: PREFILL_LAYER10_ATTENTION_OUTPUT_CHECKSUM,
             layer10_after_attention_hc_checksum: PREFILL_LAYER10_HC_ATTN_POST_FULL_CHECKSUM,
             layer10_after_ffn_hc_checksum: PREFILL_LAYER10_HC_FFN_POST_FULL_CHECKSUM,
             layer11_qkv_checksums: prefill_layer11_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer11_compressor_checksums: {
                 let fixture = prefill_layer11_compressor_fixture().unwrap();
@@ -59727,18 +59778,18 @@ mod tests {
             layer11_after_ffn_hc_checksum: PREFILL_LAYER11_HC_FFN_POST_FULL_CHECKSUM,
             layer12_qkv_checksums: prefill_layer12_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer12_compressor_checksums: prefill_layer12_compressor_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer12_attention_output_checksum: PREFILL_LAYER12_ATTENTION_OUTPUT_CHECKSUM,
             layer12_after_attention_hc_checksum: PREFILL_LAYER12_HC_ATTN_POST_FULL_CHECKSUM,
             layer12_after_ffn_hc_checksum: PREFILL_LAYER12_HC_FFN_POST_FULL_CHECKSUM,
             layer13_qkv_checksums: prefill_layer13_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer13_compressor_checksums: {
                 let fixture = prefill_layer13_compressor_fixture().unwrap();
@@ -59753,18 +59804,18 @@ mod tests {
             layer13_after_ffn_hc_checksum: PREFILL_LAYER13_HC_FFN_POST_FULL_CHECKSUM,
             layer14_qkv_checksums: prefill_layer14_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer14_compressor_checksums: prefill_layer14_compressor_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer14_attention_output_checksum: PREFILL_LAYER14_ATTENTION_OUTPUT_CHECKSUM,
             layer14_after_attention_hc_checksum: PREFILL_LAYER14_HC_ATTN_POST_FULL_CHECKSUM,
             layer14_after_ffn_hc_checksum: PREFILL_LAYER14_HC_FFN_POST_FULL_CHECKSUM,
             layer15_qkv_checksums: prefill_layer15_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer15_compressor_checksums: {
                 let fixture = prefill_layer15_compressor_fixture().unwrap();
@@ -59779,18 +59830,18 @@ mod tests {
             layer15_after_ffn_hc_checksum: PREFILL_LAYER15_HC_FFN_POST_FULL_CHECKSUM,
             layer16_qkv_checksums: prefill_layer16_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer16_compressor_checksums: prefill_layer16_compressor_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer16_attention_output_checksum: PREFILL_LAYER16_ATTENTION_OUTPUT_CHECKSUM,
             layer16_after_attention_hc_checksum: PREFILL_LAYER16_HC_ATTN_POST_FULL_CHECKSUM,
             layer16_after_ffn_hc_checksum: PREFILL_LAYER16_HC_FFN_POST_FULL_CHECKSUM,
             layer17_qkv_checksums: prefill_layer17_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer17_compressor_checksums: {
                 let fixture = prefill_layer17_compressor_fixture().unwrap();
@@ -59805,18 +59856,18 @@ mod tests {
             layer17_after_ffn_hc_checksum: PREFILL_LAYER17_HC_FFN_POST_FULL_CHECKSUM,
             layer18_qkv_checksums: prefill_layer18_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer18_compressor_checksums: prefill_layer18_compressor_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer18_attention_output_checksum: PREFILL_LAYER18_ATTENTION_OUTPUT_CHECKSUM,
             layer18_after_attention_hc_checksum: PREFILL_LAYER18_HC_ATTN_POST_FULL_CHECKSUM,
             layer18_after_ffn_hc_checksum: PREFILL_LAYER18_HC_FFN_POST_FULL_CHECKSUM,
             layer19_qkv_checksums: prefill_layer19_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer19_compressor_checksums: {
                 let fixture = prefill_layer19_compressor_fixture().unwrap();
@@ -59831,18 +59882,18 @@ mod tests {
             layer19_after_ffn_hc_checksum: PREFILL_LAYER19_HC_FFN_POST_FULL_CHECKSUM,
             layer20_qkv_checksums: prefill_layer20_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer20_compressor_checksums: prefill_layer20_compressor_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer20_attention_output_checksum: PREFILL_LAYER20_ATTENTION_OUTPUT_CHECKSUM,
             layer20_after_attention_hc_checksum: PREFILL_LAYER20_HC_ATTN_POST_FULL_CHECKSUM,
             layer20_after_ffn_hc_checksum: PREFILL_LAYER20_HC_FFN_POST_FULL_CHECKSUM,
             layer21_qkv_checksums: prefill_layer21_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer21_compressor_checksums: {
                 let fixture = prefill_layer21_compressor_fixture().unwrap();
@@ -59857,18 +59908,18 @@ mod tests {
             layer21_after_ffn_hc_checksum: PREFILL_LAYER21_HC_FFN_POST_FULL_CHECKSUM,
             layer22_qkv_checksums: prefill_layer22_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer22_compressor_checksums: prefill_layer22_compressor_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer22_attention_output_checksum: PREFILL_LAYER22_ATTENTION_OUTPUT_CHECKSUM,
             layer22_after_attention_hc_checksum: PREFILL_LAYER22_HC_ATTN_POST_FULL_CHECKSUM,
             layer22_after_ffn_hc_checksum: PREFILL_LAYER22_HC_FFN_POST_FULL_CHECKSUM,
             layer23_qkv_checksums: prefill_layer23_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer23_compressor_checksums: {
                 let fixture = prefill_layer23_compressor_fixture().unwrap();
@@ -59883,18 +59934,18 @@ mod tests {
             layer23_after_ffn_hc_checksum: PREFILL_LAYER23_HC_FFN_POST_FULL_CHECKSUM,
             layer24_qkv_checksums: prefill_layer24_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer24_compressor_checksums: prefill_layer24_compressor_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer24_attention_output_checksum: PREFILL_LAYER24_ATTENTION_OUTPUT_CHECKSUM,
             layer24_after_attention_hc_checksum: PREFILL_LAYER24_HC_ATTN_POST_FULL_CHECKSUM,
             layer24_after_ffn_hc_checksum: PREFILL_LAYER24_HC_FFN_POST_FULL_CHECKSUM,
             layer25_qkv_checksums: prefill_layer25_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer25_compressor_checksums: {
                 let fixture = prefill_layer25_compressor_fixture().unwrap();
@@ -59909,18 +59960,18 @@ mod tests {
             layer25_after_ffn_hc_checksum: PREFILL_LAYER25_HC_FFN_POST_FULL_CHECKSUM,
             layer26_qkv_checksums: prefill_layer26_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer26_compressor_checksums: prefill_layer26_compressor_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer26_attention_output_checksum: PREFILL_LAYER26_ATTENTION_OUTPUT_CHECKSUM,
             layer26_after_attention_hc_checksum: PREFILL_LAYER26_HC_ATTN_POST_FULL_CHECKSUM,
             layer26_after_ffn_hc_checksum: PREFILL_LAYER26_HC_FFN_POST_FULL_CHECKSUM,
             layer27_qkv_checksums: prefill_layer27_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer27_compressor_checksums: {
                 let fixture = prefill_layer27_compressor_fixture().unwrap();
@@ -59935,18 +59986,18 @@ mod tests {
             layer27_after_ffn_hc_checksum: PREFILL_LAYER27_HC_FFN_POST_FULL_CHECKSUM,
             layer28_qkv_checksums: prefill_layer28_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer28_compressor_checksums: prefill_layer28_compressor_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer28_attention_output_checksum: PREFILL_LAYER28_ATTENTION_OUTPUT_CHECKSUM,
             layer28_after_attention_hc_checksum: PREFILL_LAYER28_HC_ATTN_POST_FULL_CHECKSUM,
             layer28_after_ffn_hc_checksum: PREFILL_LAYER28_HC_FFN_POST_FULL_CHECKSUM,
             layer29_qkv_checksums: prefill_layer29_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer29_compressor_checksums: {
                 let fixture = prefill_layer29_compressor_fixture().unwrap();
@@ -59961,18 +60012,18 @@ mod tests {
             layer29_after_ffn_hc_checksum: PREFILL_LAYER29_HC_FFN_POST_FULL_CHECKSUM,
             layer30_qkv_checksums: prefill_layer30_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer30_compressor_checksums: prefill_layer30_compressor_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer30_attention_output_checksum: PREFILL_LAYER30_ATTENTION_OUTPUT_CHECKSUM,
             layer30_after_attention_hc_checksum: PREFILL_LAYER30_HC_ATTN_POST_FULL_CHECKSUM,
             layer30_after_ffn_hc_checksum: PREFILL_LAYER30_HC_FFN_POST_FULL_CHECKSUM,
             layer31_qkv_checksums: prefill_layer31_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer31_compressor_checksums: {
                 let fixture = prefill_layer31_compressor_fixture().unwrap();
@@ -59987,18 +60038,18 @@ mod tests {
             layer31_after_ffn_hc_checksum: PREFILL_LAYER31_HC_FFN_POST_FULL_CHECKSUM,
             layer32_qkv_checksums: prefill_layer32_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer32_compressor_checksums: prefill_layer32_compressor_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer32_attention_output_checksum: PREFILL_LAYER32_ATTENTION_OUTPUT_CHECKSUM,
             layer32_after_attention_hc_checksum: PREFILL_LAYER32_HC_ATTN_POST_FULL_CHECKSUM,
             layer32_after_ffn_hc_checksum: PREFILL_LAYER32_HC_FFN_POST_FULL_CHECKSUM,
             layer33_qkv_checksums: prefill_layer33_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer33_compressor_checksums: {
                 let fixture = prefill_layer33_compressor_fixture().unwrap();
@@ -60013,18 +60064,18 @@ mod tests {
             layer33_after_ffn_hc_checksum: PREFILL_LAYER33_HC_FFN_POST_FULL_CHECKSUM,
             layer34_qkv_checksums: prefill_layer34_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer34_compressor_checksums: prefill_layer34_compressor_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer34_attention_output_checksum: PREFILL_LAYER34_ATTENTION_OUTPUT_CHECKSUM,
             layer34_after_attention_hc_checksum: PREFILL_LAYER34_HC_ATTN_POST_FULL_CHECKSUM,
             layer34_after_ffn_hc_checksum: PREFILL_LAYER34_HC_FFN_POST_FULL_CHECKSUM,
             layer35_qkv_checksums: prefill_layer35_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer35_compressor_checksums: {
                 let fixture = prefill_layer35_compressor_fixture().unwrap();
@@ -60039,18 +60090,18 @@ mod tests {
             layer35_after_ffn_hc_checksum: PREFILL_LAYER35_HC_FFN_POST_FULL_CHECKSUM,
             layer36_qkv_checksums: prefill_layer36_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer36_compressor_checksums: prefill_layer36_compressor_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer36_attention_output_checksum: PREFILL_LAYER36_ATTENTION_OUTPUT_CHECKSUM,
             layer36_after_attention_hc_checksum: PREFILL_LAYER36_HC_ATTN_POST_FULL_CHECKSUM,
             layer36_after_ffn_hc_checksum: PREFILL_LAYER36_HC_FFN_POST_FULL_CHECKSUM,
             layer37_qkv_checksums: prefill_layer37_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer37_compressor_checksums: {
                 let fixture = prefill_layer37_compressor_fixture().unwrap();
@@ -60065,18 +60116,18 @@ mod tests {
             layer37_after_ffn_hc_checksum: PREFILL_LAYER37_HC_FFN_POST_FULL_CHECKSUM,
             layer38_qkv_checksums: prefill_layer38_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer38_compressor_checksums: prefill_layer38_compressor_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer38_attention_output_checksum: PREFILL_LAYER38_ATTENTION_OUTPUT_CHECKSUM,
             layer38_after_attention_hc_checksum: PREFILL_LAYER38_HC_ATTN_POST_FULL_CHECKSUM,
             layer38_after_ffn_hc_checksum: PREFILL_LAYER38_HC_FFN_POST_FULL_CHECKSUM,
             layer39_qkv_checksums: prefill_layer39_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer39_compressor_checksums: {
                 let fixture = prefill_layer39_compressor_fixture().unwrap();
@@ -60091,18 +60142,18 @@ mod tests {
             layer39_after_ffn_hc_checksum: PREFILL_LAYER39_HC_FFN_POST_FULL_CHECKSUM,
             layer40_qkv_checksums: prefill_layer40_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer40_compressor_checksums: prefill_layer40_compressor_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer40_attention_output_checksum: PREFILL_LAYER40_ATTENTION_OUTPUT_CHECKSUM,
             layer40_after_attention_hc_checksum: PREFILL_LAYER40_HC_ATTN_POST_FULL_CHECKSUM,
             layer40_after_ffn_hc_checksum: PREFILL_LAYER40_HC_FFN_POST_FULL_CHECKSUM,
             layer41_qkv_checksums: prefill_layer41_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer41_compressor_checksums: {
                 let fixture = prefill_layer41_compressor_fixture().unwrap();
@@ -60117,11 +60168,11 @@ mod tests {
             layer41_after_ffn_hc_checksum: PREFILL_LAYER41_HC_FFN_POST_FULL_CHECKSUM,
             layer42_qkv_checksums: prefill_layer42_qkv_final_tile_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer42_compressor_checksums: prefill_layer42_compressor_fixture()
                 .unwrap()
-                .each_ref()
+                .array_refs()
                 .map(|tensor| checksum_f32(tensor)),
             layer42_attention_output_checksum: PREFILL_LAYER42_ATTENTION_OUTPUT_CHECKSUM,
             layer42_after_attention_hc_checksum: PREFILL_LAYER42_HC_ATTN_POST_FULL_CHECKSUM,
@@ -63652,7 +63703,7 @@ mod tests {
     fn prefill_layer3_kv_state_fixture_has_target_shapes() {
         let tensors = prefill_layer3_kv_state_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 1024,
                 32 * 512,
@@ -63691,7 +63742,7 @@ mod tests {
     fn prefill_layer4_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer4_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -63712,7 +63763,7 @@ mod tests {
     fn prefill_layer5_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer5_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -63733,7 +63784,7 @@ mod tests {
     fn prefill_layer6_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer6_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -63812,7 +63863,7 @@ mod tests {
     fn prefill_layer8_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer8_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -63877,7 +63928,7 @@ mod tests {
     fn prefill_layer7_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer7_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -63912,7 +63963,7 @@ mod tests {
         assert_eq!(attention.len(), 2048 * 4096);
         assert_eq!(hc_post.len(), 32 * 4 * 4096);
         assert_eq!(
-            diagnostics.each_ref().map(|tensor| tensor.len()),
+            diagnostics.array_refs().map(|tensor| tensor.len()),
             [32_768, 32_768, 8_192]
         );
         assert!(attention.iter().all(|value| value.is_finite()));
@@ -63936,7 +63987,7 @@ mod tests {
     fn prefill_layer10_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer10_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -64001,7 +64052,7 @@ mod tests {
     fn prefill_layer9_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer9_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -64036,7 +64087,7 @@ mod tests {
         assert_eq!(attention.len(), 2048 * 4096);
         assert_eq!(hc_post.len(), 32 * 4 * 4096);
         assert_eq!(
-            diagnostics.each_ref().map(|tensor| tensor.len()),
+            diagnostics.array_refs().map(|tensor| tensor.len()),
             [32_768, 32_768, 8_192]
         );
         assert!(attention.iter().all(|value| value.is_finite()));
@@ -64060,7 +64111,7 @@ mod tests {
     fn prefill_layer12_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer12_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -64125,7 +64176,7 @@ mod tests {
     fn prefill_layer11_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer11_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -64160,7 +64211,7 @@ mod tests {
         assert_eq!(attention.len(), 2048 * 4096);
         assert_eq!(hc_post.len(), 32 * 4 * 4096);
         assert_eq!(
-            diagnostics.each_ref().map(|tensor| tensor.len()),
+            diagnostics.array_refs().map(|tensor| tensor.len()),
             [32_768, 32_768, 8_192]
         );
         assert!(attention.iter().all(|value| value.is_finite()));
@@ -64184,7 +64235,7 @@ mod tests {
     fn prefill_layer14_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer14_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -64249,7 +64300,7 @@ mod tests {
     fn prefill_layer13_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer13_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -64284,7 +64335,7 @@ mod tests {
         assert_eq!(attention.len(), 2048 * 4096);
         assert_eq!(hc_post.len(), 32 * 4 * 4096);
         assert_eq!(
-            diagnostics.each_ref().map(|tensor| tensor.len()),
+            diagnostics.array_refs().map(|tensor| tensor.len()),
             [32_768, 32_768, 8_192]
         );
         assert!(attention.iter().all(|value| value.is_finite()));
@@ -64308,7 +64359,7 @@ mod tests {
     fn prefill_layer16_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer16_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -64373,7 +64424,7 @@ mod tests {
     fn prefill_layer15_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer15_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -64408,7 +64459,7 @@ mod tests {
         assert_eq!(attention.len(), 2048 * 4096);
         assert_eq!(hc_post.len(), 32 * 4 * 4096);
         assert_eq!(
-            diagnostics.each_ref().map(|tensor| tensor.len()),
+            diagnostics.array_refs().map(|tensor| tensor.len()),
             [32_768, 32_768, 8_192]
         );
         assert!(attention.iter().all(|value| value.is_finite()));
@@ -64432,7 +64483,7 @@ mod tests {
     fn prefill_layer18_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer18_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -64497,7 +64548,7 @@ mod tests {
     fn prefill_layer17_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer17_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -64532,7 +64583,7 @@ mod tests {
         assert_eq!(attention.len(), 2048 * 4096);
         assert_eq!(hc_post.len(), 32 * 4 * 4096);
         assert_eq!(
-            diagnostics.each_ref().map(|tensor| tensor.len()),
+            diagnostics.array_refs().map(|tensor| tensor.len()),
             [32_768, 32_768, 8_192]
         );
         assert!(attention.iter().all(|value| value.is_finite()));
@@ -64556,7 +64607,7 @@ mod tests {
     fn prefill_layer20_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer20_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -64621,7 +64672,7 @@ mod tests {
     fn prefill_layer19_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer19_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -64656,7 +64707,7 @@ mod tests {
         assert_eq!(attention.len(), 2048 * 4096);
         assert_eq!(hc_post.len(), 32 * 4 * 4096);
         assert_eq!(
-            diagnostics.each_ref().map(|tensor| tensor.len()),
+            diagnostics.array_refs().map(|tensor| tensor.len()),
             [32_768, 32_768, 8_192]
         );
         assert!(attention.iter().all(|value| value.is_finite()));
@@ -64680,7 +64731,7 @@ mod tests {
     fn prefill_layer22_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer22_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -64745,7 +64796,7 @@ mod tests {
     fn prefill_layer21_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer21_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -64780,7 +64831,7 @@ mod tests {
         assert_eq!(attention.len(), 2048 * 4096);
         assert_eq!(hc_post.len(), 32 * 4 * 4096);
         assert_eq!(
-            diagnostics.each_ref().map(|tensor| tensor.len()),
+            diagnostics.array_refs().map(|tensor| tensor.len()),
             [32_768, 32_768, 8_192]
         );
         assert!(attention.iter().all(|value| value.is_finite()));
@@ -64804,7 +64855,7 @@ mod tests {
     fn prefill_layer24_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer24_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -64869,7 +64920,7 @@ mod tests {
     fn prefill_layer23_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer23_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -64904,7 +64955,7 @@ mod tests {
         assert_eq!(attention.len(), 2048 * 4096);
         assert_eq!(hc_post.len(), 32 * 4 * 4096);
         assert_eq!(
-            diagnostics.each_ref().map(|tensor| tensor.len()),
+            diagnostics.array_refs().map(|tensor| tensor.len()),
             [32_768, 32_768, 8_192]
         );
         assert!(attention.iter().all(|value| value.is_finite()));
@@ -64928,7 +64979,7 @@ mod tests {
     fn prefill_layer26_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer26_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -64993,7 +65044,7 @@ mod tests {
     fn prefill_layer25_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer25_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -65028,7 +65079,7 @@ mod tests {
         assert_eq!(attention.len(), 2048 * 4096);
         assert_eq!(hc_post.len(), 32 * 4 * 4096);
         assert_eq!(
-            diagnostics.each_ref().map(|tensor| tensor.len()),
+            diagnostics.array_refs().map(|tensor| tensor.len()),
             [32_768, 32_768, 8_192]
         );
         assert!(attention.iter().all(|value| value.is_finite()));
@@ -65052,7 +65103,7 @@ mod tests {
     fn prefill_layer28_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer28_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -65117,7 +65168,7 @@ mod tests {
     fn prefill_layer27_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer27_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -65152,7 +65203,7 @@ mod tests {
         assert_eq!(attention.len(), 2048 * 4096);
         assert_eq!(hc_post.len(), 32 * 4 * 4096);
         assert_eq!(
-            diagnostics.each_ref().map(|tensor| tensor.len()),
+            diagnostics.array_refs().map(|tensor| tensor.len()),
             [32_768, 32_768, 8_192]
         );
         assert!(attention.iter().all(|value| value.is_finite()));
@@ -65176,7 +65227,7 @@ mod tests {
     fn prefill_layer30_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer30_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -65241,7 +65292,7 @@ mod tests {
     fn prefill_layer29_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer29_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -65276,7 +65327,7 @@ mod tests {
         assert_eq!(attention.len(), 2048 * 4096);
         assert_eq!(hc_post.len(), 32 * 4 * 4096);
         assert_eq!(
-            diagnostics.each_ref().map(|tensor| tensor.len()),
+            diagnostics.array_refs().map(|tensor| tensor.len()),
             [32_768, 32_768, 8_192]
         );
         assert!(attention.iter().all(|value| value.is_finite()));
@@ -65300,7 +65351,7 @@ mod tests {
     fn prefill_layer32_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer32_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -65365,7 +65416,7 @@ mod tests {
     fn prefill_layer31_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer31_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -65400,7 +65451,7 @@ mod tests {
         assert_eq!(attention.len(), 2048 * 4096);
         assert_eq!(hc_post.len(), 32 * 4 * 4096);
         assert_eq!(
-            diagnostics.each_ref().map(|tensor| tensor.len()),
+            diagnostics.array_refs().map(|tensor| tensor.len()),
             [32_768, 32_768, 8_192]
         );
         assert!(attention.iter().all(|value| value.is_finite()));
@@ -65424,7 +65475,7 @@ mod tests {
     fn prefill_layer34_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer34_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -65489,7 +65540,7 @@ mod tests {
     fn prefill_layer33_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer33_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -65524,7 +65575,7 @@ mod tests {
         assert_eq!(attention.len(), 2048 * 4096);
         assert_eq!(hc_post.len(), 32 * 4 * 4096);
         assert_eq!(
-            diagnostics.each_ref().map(|tensor| tensor.len()),
+            diagnostics.array_refs().map(|tensor| tensor.len()),
             [32_768, 32_768, 8_192]
         );
         assert!(attention.iter().all(|value| value.is_finite()));
@@ -65548,7 +65599,7 @@ mod tests {
     fn prefill_layer36_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer36_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -65613,7 +65664,7 @@ mod tests {
     fn prefill_layer35_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer35_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -65648,7 +65699,7 @@ mod tests {
         assert_eq!(attention.len(), 2048 * 4096);
         assert_eq!(hc_post.len(), 32 * 4 * 4096);
         assert_eq!(
-            diagnostics.each_ref().map(|tensor| tensor.len()),
+            diagnostics.array_refs().map(|tensor| tensor.len()),
             [32_768, 32_768, 8_192]
         );
         assert!(attention.iter().all(|value| value.is_finite()));
@@ -65672,7 +65723,7 @@ mod tests {
     fn prefill_layer38_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer38_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -65737,7 +65788,7 @@ mod tests {
     fn prefill_layer37_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer37_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -65772,7 +65823,7 @@ mod tests {
         assert_eq!(attention.len(), 2048 * 4096);
         assert_eq!(hc_post.len(), 32 * 4 * 4096);
         assert_eq!(
-            diagnostics.each_ref().map(|tensor| tensor.len()),
+            diagnostics.array_refs().map(|tensor| tensor.len()),
             [32_768, 32_768, 8_192]
         );
         assert!(attention.iter().all(|value| value.is_finite()));
@@ -65796,7 +65847,7 @@ mod tests {
     fn prefill_layer40_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer40_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -65861,7 +65912,7 @@ mod tests {
     fn prefill_layer39_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer39_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -65896,7 +65947,7 @@ mod tests {
         assert_eq!(attention.len(), 2048 * 4096);
         assert_eq!(hc_post.len(), 32 * 4 * 4096);
         assert_eq!(
-            diagnostics.each_ref().map(|tensor| tensor.len()),
+            diagnostics.array_refs().map(|tensor| tensor.len()),
             [32_768, 32_768, 8_192]
         );
         assert!(attention.iter().all(|value| value.is_finite()));
@@ -65920,7 +65971,7 @@ mod tests {
     fn prefill_layer42_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer42_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -65985,7 +66036,7 @@ mod tests {
     fn prefill_layer41_qkv_fixture_has_target_shapes() {
         let tensors = prefill_layer41_qkv_final_tile_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 4096,
@@ -66020,7 +66071,7 @@ mod tests {
         assert_eq!(attention.len(), 2048 * 4096);
         assert_eq!(hc_post.len(), 32 * 4 * 4096);
         assert_eq!(
-            diagnostics.each_ref().map(|tensor| tensor.len()),
+            diagnostics.array_refs().map(|tensor| tensor.len()),
             [32_768, 32_768, 8_192]
         );
         assert!(attention.iter().all(|value| value.is_finite()));
@@ -66074,7 +66125,7 @@ mod tests {
     fn prefill_layer5_attention_diagnostics_fixture_has_target_shapes() {
         let diagnostics = prefill_layer5_attention_diagnostics_fixture().unwrap();
         assert_eq!(
-            diagnostics.each_ref().map(|tensor| tensor.len()),
+            diagnostics.array_refs().map(|tensor| tensor.len()),
             [64 * 512, 64 * 512, 8192]
         );
         assert!(diagnostics.iter().flatten().all(|value| value.is_finite()));
@@ -66096,7 +66147,7 @@ mod tests {
     fn prefill_layer4_attention_diagnostics_fixture_has_target_shapes() {
         let diagnostics = prefill_layer4_attention_diagnostics_fixture().unwrap();
         assert_eq!(
-            diagnostics.each_ref().map(|tensor| tensor.len()),
+            diagnostics.array_refs().map(|tensor| tensor.len()),
             [64 * 512, 64 * 512, 8192]
         );
         assert!(diagnostics.iter().flatten().all(|value| value.is_finite()));
@@ -66215,7 +66266,7 @@ mod tests {
     fn prefill_qkv_boundary_fixture_has_target_shapes() {
         let tensors = prefill_qkv_boundary_fixture().unwrap();
         assert_eq!(
-            tensors.each_ref().map(|tensor| tensor.len()),
+            tensors.array_refs().map(|tensor| tensor.len()),
             [
                 32 * 4096,
                 32 * 1024,
@@ -66227,7 +66278,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            tensors.each_ref().map(|tensor| checksum_f32(tensor)),
+            tensors.array_refs().map(|tensor| checksum_f32(tensor)),
             [
                 3_658_078_701_343_054_310,
                 12_227_882_723_182_009_333,

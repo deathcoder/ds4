@@ -1,0 +1,16 @@
+{
+  "name": "format",
+  "command": [
+    "cargo",
+    "+1.74.0",
+    "fmt",
+    "--manifest-path",
+    "rust-star/runtime/Cargo.toml",
+    "--check"
+  ],
+  "exit_code": 0,
+  "started_utc": "2026-09-12T06:36:01.049258+00:00",
+  "finished_utc": "2026-09-12T06:36:01.594800+00:00",
+  "elapsed_seconds": 0.5455792079999999,
+  "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

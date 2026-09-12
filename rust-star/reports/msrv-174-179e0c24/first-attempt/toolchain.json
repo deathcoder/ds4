@@ -1,0 +1,7 @@
+{
+  "rustc": "rustc 1.74.0 (79e9716c9 2023-11-13)\nbinary: rustc\ncommit-hash: 79e9716c980570bfd1f666e3b16ac583f0168962\ncommit-date: 2023-11-13\nhost: aarch64-apple-darwin\nrelease: 1.74.0\nLLVM version: 17.0.4",
+  "cargo": "cargo 1.74.0 (ecb9851af 2023-10-18)",
+  "rustfmt": "rustfmt 1.6.0-stable (79e9716c 2023-11-13)",
+  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.5.2\nBuildVersion:\t\t25F84",
+  "clang": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.5.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+}

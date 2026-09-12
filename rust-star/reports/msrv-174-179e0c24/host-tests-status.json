@@ -1,0 +1,16 @@
+{
+  "name": "host-tests",
+  "command": [
+    "cargo",
+    "+1.74.0",
+    "test",
+    "--locked",
+    "--manifest-path",
+    "rust-star/runtime/Cargo.toml"
+  ],
+  "exit_code": 0,
+  "started_utc": "2026-09-12T06:36:01.648186+00:00",
+  "finished_utc": "2026-09-12T06:37:02.577141+00:00",
+  "elapsed_seconds": 60.927770791,
+  "log_sha256": "cba716771c5cf4fc8b3ea7ab45eba67672602574b11c1032c02abd8725ee8cc3"
+}

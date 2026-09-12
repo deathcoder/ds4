@@ -64,6 +64,15 @@ Read-only refresh (2026-09-12):
 - Filtered evidence: `rust-star/reports/ci-status-2026-09-12.json`. Local
   release-test success does not complete this remote workflow requirement.
 
+Local pinned-toolchain repair (2026-09-12):
+
+- Fixed APIs unavailable on Rust 1.74 without raising the declared minimum.
+  Pinned formatting, all 320 Rust tests, native optimized build, 94 Python
+  tests and the synthetic artifact writer/reader pass on this Mac.
+- Evidence: `rust-star/reports/msrv-174-179e0c24/README.md`. Both initial compiler
+  failures are preserved. This local success does not prove Linux execution,
+  change the historical account diagnosis or complete M-001. No workflow ran.
+
 ## M-002 — Compile and inspect the real GGUF on the M1 Ultra
 
 Status: `DONE` (2026-08-14)

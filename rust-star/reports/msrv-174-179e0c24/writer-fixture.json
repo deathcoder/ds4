@@ -1,0 +1,13 @@
+{
+  "source": "rust-star",
+  "backend": "host-contract-test",
+  "model": "synthetic-fixture",
+  "vocab": 5,
+  "prompt_tokens": 3,
+  "frontier_tokens": 3,
+  "ctx": 256,
+  "quant_bits": 2,
+  "quality": true,
+  "argmax_id": 1,
+  "logits": [-0.00000000e0, 1.25000000e0, 1.25000000e0, 1.17549435e-38, -3.50000000e0]
+}

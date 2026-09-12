@@ -1,0 +1,18 @@
+{
+  "name": "install-toolchain",
+  "command": [
+    "rustup",
+    "toolchain",
+    "install",
+    "1.74.0",
+    "--profile",
+    "minimal",
+    "--component",
+    "rustfmt"
+  ],
+  "exit_code": 0,
+  "started_utc": "2026-09-12T06:30:29.658653+00:00",
+  "finished_utc": "2026-09-12T06:31:03.138750+00:00",
+  "elapsed_seconds": 33.479440375,
+  "log_sha256": "217225acb183077f490e2cd8676cadfb2330b1e583e514a286b369452cdea9ae"
+}

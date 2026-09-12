@@ -1,0 +1,29 @@
+{
+  "argmax_match": true,
+  "bit_mismatch_rate": 0.0,
+  "bit_mismatches": 0,
+  "c0_exact": true,
+  "candidate_argmax": 1,
+  "classification": "C0",
+  "cosine_similarity": 0.9999999999999999,
+  "kl_reference_candidate": 0.0,
+  "max_absolute_error": 0.0,
+  "max_absolute_error_index": 0,
+  "max_relative_error": 0.0,
+  "max_relative_error_index": 0,
+  "max_ulp_distance": 0,
+  "max_ulp_distance_index": 0,
+  "mean_absolute_error": 0.0,
+  "metadata_mismatches": [],
+  "mismatch_examples": [],
+  "reference_argmax": 1,
+  "rmse": 0.0,
+  "schema": "rust-star-logit-comparison-v1",
+  "top_k": {
+    "1": {
+      "intersection": 1,
+      "jaccard": 1.0
+    }
+  },
+  "vocab": 5
+}

@@ -1,0 +1,16 @@
+{
+  "name": "fixture-reader",
+  "command": [
+    "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+    "rust-star/compare_logits.py",
+    "$WORK/writer-fixture.json",
+    "$WORK/writer-fixture.json",
+    "--json",
+    "$WORK/writer-reader-comparison.json"
+  ],
+  "exit_code": 0,
+  "started_utc": "2026-09-12T06:40:21.010550+00:00",
+  "finished_utc": "2026-09-12T06:40:21.061511+00:00",
+  "elapsed_seconds": 0.05099887500000477,
+  "log_sha256": "f90dbfc1fcbc57c5c176086a37b7eff268572f24ec03974b272e205899472fcf"
+}

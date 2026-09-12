@@ -1,0 +1,72 @@
+{
+  "utc": "2026-09-12T06:32:27.519157+00:00",
+  "runs": [
+    {
+      "name": "install-toolchain",
+      "command": [
+        "rustup",
+        "toolchain",
+        "install",
+        "1.74.0",
+        "--profile",
+        "minimal",
+        "--component",
+        "rustfmt"
+      ],
+      "exit_code": 0,
+      "started_utc": "2026-09-12T06:30:29.658653+00:00",
+      "finished_utc": "2026-09-12T06:31:03.138750+00:00",
+      "elapsed_seconds": 33.479440375,
+      "log_sha256": "217225acb183077f490e2cd8676cadfb2330b1e583e514a286b369452cdea9ae"
+    },
+    {
+      "name": "accepted-check-failure",
+      "command": [
+        "cargo",
+        "+1.74.0",
+        "check",
+        "--locked",
+        "--manifest-path",
+        "rust-star/runtime/Cargo.toml"
+      ],
+      "exit_code": 101,
+      "started_utc": "2026-09-12T06:31:04.573860+00:00",
+      "finished_utc": "2026-09-12T06:32:20.686395+00:00",
+      "elapsed_seconds": 76.11101525,
+      "log_sha256": "15a9354a7f9c1ef89068aa308884f5283e37b682dbf69177e860916fc5051ca2"
+    },
+    {
+      "name": "format",
+      "command": [
+        "cargo",
+        "+1.74.0",
+        "fmt",
+        "--manifest-path",
+        "rust-star/runtime/Cargo.toml",
+        "--check"
+      ],
+      "exit_code": 0,
+      "started_utc": "2026-09-12T06:32:20.795136+00:00",
+      "finished_utc": "2026-09-12T06:32:21.858881+00:00",
+      "elapsed_seconds": 1.063735667000003,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "host-tests",
+      "command": [
+        "cargo",
+        "+1.74.0",
+        "test",
+        "--locked",
+        "--manifest-path",
+        "rust-star/runtime/Cargo.toml"
+      ],
+      "exit_code": 101,
+      "started_utc": "2026-09-12T06:32:21.912597+00:00",
+      "finished_utc": "2026-09-12T06:32:27.518469+00:00",
+      "elapsed_seconds": 5.605765625000004,
+      "log_sha256": "9b3064e66db8d8088245fad395d1e944fb8075ddc29dc14e6ff7a7677dd74319"
+    }
+  ],
+  "traceback": "Traceback (most recent call last):\n  File \"$FIRST_ATTEMPT/run.py\", line 34, in <module>\n    for name,cmd in commands:assert sources()==candidate;assert run(name,cmd)==0,name\nAssertionError: host-tests\n"
+}

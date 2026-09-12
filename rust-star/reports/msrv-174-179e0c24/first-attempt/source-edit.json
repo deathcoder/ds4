@@ -1,0 +1,8 @@
+{
+  "file": "rust-star/runtime/src/metal.rs",
+  "before_sha256": "6abbf9deb2017d6697db5b63f631ea37aeaa2cf236bb25b6f41a61d664cc2054",
+  "after_sha256": "9d53c68116e02b72893bdbb3359e5b155c2d058b8854ac56889b4ab7a9137882",
+  "before": ".is_none_or(",
+  "after": ".map_or(true, ",
+  "count": 2
+}

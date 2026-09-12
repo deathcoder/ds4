@@ -1,0 +1,22 @@
+{
+  "schema": "rust-star-msrv-array-borrows-v1",
+  "utc": "2026-09-12T06:34:53.608856+00:00",
+  "prior_failure_sha256": "149be6422083d3b097469906636d5e38f749eec50a7a85cbfb177d41491a98f4",
+  "prior_source_sha256": "9d53c68116e02b72893bdbb3359e5b155c2d058b8854ac56889b4ab7a9137882",
+  "candidate_source_sha256": "6b3b4b579bded71a044f2270d06fc0a00aef805791b427fc36cbb6bdcddb9088",
+  "helper_sha256": "440e27cf17d2c9a017251e14cf6dbc9f02741e0bf8ca3cfc1a8d06a14165db84",
+  "read_replacements": 239,
+  "mut_replacements": 39,
+  "formatted_full_inverse_exact": true,
+  "retained_option_fix_count": 2,
+  "scope": "Only Rust host compatibility; all other 41 pinned sources and GPU code unchanged",
+  "validation": [
+    "Pinned 1.74 format check",
+    "Pinned host tests",
+    "Pinned optimized build",
+    "Python artifact contracts",
+    "Synthetic five-word writer-reader fixture"
+  ],
+  "performance_or_full_model_claim": false,
+  "no_push": true
+}

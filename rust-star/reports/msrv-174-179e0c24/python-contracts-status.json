@@ -1,0 +1,17 @@
+{
+  "name": "python-contracts",
+  "command": [
+    "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "rust-star/tests",
+    "-v"
+  ],
+  "exit_code": 0,
+  "started_utc": "2026-09-12T06:39:42.026429+00:00",
+  "finished_utc": "2026-09-12T06:40:20.441773+00:00",
+  "elapsed_seconds": 38.415124917000014,
+  "log_sha256": "7b70d50ff7b726cd09189d14b61c7063fbfcc514be2669358f29d6f07e6b5188"
+}

@@ -1,0 +1,15 @@
+info: syncing channel updates for '1.74.0-aarch64-apple-darwin'
+info: latest update on 2023-11-16, rust version 1.74.0 (79e9716c9 2023-11-13)
+info: downloading component 'cargo'
+info: downloading component 'rust-std'
+info: downloading component 'rustc'
+info: downloading component 'rustfmt'
+info: installing component 'cargo'
+info: installing component 'rust-std'
+info: installing component 'rustc'
+info: installing component 'rustfmt'
+
+  1.74.0-aarch64-apple-darwin installed - rustc 1.74.0 (79e9716c9 2023-11-13)
+
+info: checking for self-update
+info: downloading self-update

@@ -1,0 +1,21 @@
+{
+  "name": "fixture-writer",
+  "command": [
+    "cargo",
+    "+1.74.0",
+    "run",
+    "--locked",
+    "--quiet",
+    "--manifest-path",
+    "rust-star/runtime/Cargo.toml",
+    "--example",
+    "write_logit_fixture",
+    "--",
+    "$WORK/writer-fixture.json"
+  ],
+  "exit_code": 0,
+  "started_utc": "2026-09-12T06:40:20.502927+00:00",
+  "finished_utc": "2026-09-12T06:40:20.945893+00:00",
+  "elapsed_seconds": 0.4430158750000146,
+  "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

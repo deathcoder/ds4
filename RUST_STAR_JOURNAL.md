@@ -18,6 +18,67 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-12 — Complete Rust 1.74 compatibility and return to performance work
+
+- Corrected source passes pinned Rust 1.74 formatting, all 320 host tests,
+  optimized native build, all 94 Python artifact tests and the five-word
+  synthetic writer/reader fixture. Both original compiler failures are retained.
+- Verified report: rust-star/reports/msrv-174-179e0c24/README.md. Its 50-artifact
+  verifier uses Python and Rust 1.74 rustfmt to independently reproduce the
+  complete source inverse, verify every prior/current source and log identity,
+  and recheck the artifact contract without GPU or model execution.
+- Only metal.rs changes: equivalent replacements of two Option calls, and a
+  private safe array-borrow helper replacing 239 each_ref/39 each_mut calls.
+  All other 41 pinned sources, including every GPU source, remain unchanged.
+  The declared minimum stays Rust 1.74; no unsafe code or heap allocation is
+  introduced by the helper. Actual source reversal passes in the verifier.
+- The accepted performance executable stays exactly 4ced6ee8. The separately
+  compiled 1.74 binary identity is in the report; no new full-model C0, engine
+  result, Linux execution or GitHub CI success is inferred from these checks.
+- Changed source/docs pass whitespace checks. Preserve original whitespace in
+  the archived compiler output, test log, patch and exact helper template; the
+  staged check passes with only those four byte-pinned evidence paths excluded.
+- No GPU work is active. Commit this local checkpoint, record compatibility
+  closure, and directly start .work/routed-half-prefill-c7adfb22/run.py. Keep
+  all its predetermined edge/neutral/candidate gates and preserve every failure.
+
+## 2026-09-12 — Extend the compatibility repair from compiler evidence
+
+- Rust 1.74 installation succeeded. The accepted-source check reports two
+  missing is_none_or calls and 157 unstable array_methods errors. The initial
+  two-call repair passes formatting, but host tests fail on 278 array methods
+  (239 each_ref and 39 each_mut call sites, including test-only code).
+  Preserve .work/msrv-174-c7adfb22/failure.json and every compiler log; its
+  runner stopped before optimized build or subsequent contract checks.
+- Corrected attempt: .work/msrv-174-array-borrows/. A private safe ArrayBorrows
+  helper uses std::array::from_fn and iter_mut, preserving element order and
+  references without cloning or allocating the elements. Mechanically replace
+  the 239/39 method calls, retain the two Option fixes, and leave the other 41
+  pinned sources (including GPU code) untouched. Full formatted inverse proof
+  recovers the preceding source exactly.
+- Frozen runner started 2026-09-12T06:36:01 UTC, exec session 23805. Formatting
+  passes; pinned host tests are compiling. Read execution.log and completion.json
+  or failure.json. It reuses the prior isolated Cargo target and same native
+  build marker; no GPU work is active. Do not modify the frozen source/scripts.
+- After this corrected run, package both attempts and verify the source reversal
+  using Rust 1.74 rustfmt plus model-free artifact checks; then commit locally
+  and continue the prepared routed-input experiment. No remote CI, new model
+  correctness or performance claim follows from these compatibility checks.
+
+## 2026-09-12 — Start the pinned Rust 1.74 compatibility milestone
+
+- Wide-bootstrap rejection/restoration is committed locally at
+  179e0c2408d3738bbb8d749775610741c51b9c19; its milestone-completion.json
+  records the final manifest/verifier/restoration hashes. No push occurred.
+- Started .work/msrv-174-c7adfb22/run.py at 2026-09-12T06:30:29 UTC. It first
+  installs Rust 1.74.0 with rustfmt, then records the expected accepted-source
+  compiler failure before changing the two report-validation Option calls.
+  Read execution.log, per-command status/logs and completion.json or failure.json
+  before taking the next action. The active exec session is 57137.
+- Isolated CARGO_TARGET_DIR keeps the accepted performance executable intact.
+  Every other pinned source must stay byte-identical; no GPU/model timing is
+  active. Do not run the queued routed-half probe during compilation.
+
 ## 2026-09-12 — Close wide bootstrap as a rejected whole-engine candidate
 
 - Completed every planned run: two warm-ups and five AB/BA/AB/BA/AB pairs,
@@ -5007,18 +5068,21 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-12)
 
-- ACTIVE: autonomous milestone sequence; continue after each completed decision.
-  Wide bootstrap c7adfb22 is rejected after all 12 planned engine runs. Median
-  prefill -1.127%, but two slower pairs and failed separate-order gate; separate
-  peak memory footprint +52.484%. All 42 runtime source hashes and the work
-  executable are restored to accepted4ced6ee8. Complete verified report:
-  rust-star/reports/wide-bootstrap-c7adfb22/README.md (245 artifacts).
-  No GPU work is active. Next: run the prepared .work/msrv-174-c7adfb22/run.py
-  after local milestone closure; it first reproduces the pinned compiler error
-  and then validates the equivalent two-call compatibility repair. Next GPU
-  study is .work/routed-half-prefill-c7adfb22/run.py, with fixed neutral and
-  candidate selection gates. Keep full C0/engine validation before retention.
-  This remains Rust-versus-Rust evidence; 256K stays paused and no push occurs.
+- ACTIVE: autonomous milestone sequence. Wide bootstrap c7adfb22 is rejected
+  after all 12 engine runs and restored at 179e0c24. Verified report:
+  rust-star/reports/wide-bootstrap-c7adfb22/README.md. Median prefill -1.127%,
+  but two slower pairs and a failed order gate; memory footprint +52.484%.
+- COMPLETE: declared Rust 1.74 compatibility. One Rust file changes with safe
+  array borrows and equivalent Option checks; all 41 other pinned sources and
+  the accepted performance executable remain unchanged. All 320 Rust/94 Python
+  tests, optimized build, formatting and synthetic artifact checks pass. Report:
+  rust-star/reports/msrv-174-179e0c24/README.md (50 artifacts, full source inverse).
+- NEXT: .work/routed-half-prefill-c7adfb22/run.py, prepared and not yet executed.
+  It freezes the current accepted host source and actual production kernel
+  fragments. Strict edge/A/A/mixed gates must pass before any runtime integration.
+  A new full-C0 and whole-engine plan is required after local selection.
+  No GPU work is active. No fresh DwarfStar/model/frontier claim; 256K stays
+  paused. Remote CI remains unverified; do not push or dispatch a workflow.
 
 - COMPLETE: attention-output whole-engine milestone. Candidate 4ced6ee8 is
   retained. Report rust-star/reports/attention-output-engine-4ced6ee8/README.md.
@@ -5940,22 +6004,20 @@ Next:
 
 ## Immediate Next Actions
 
-1. Complete the local wide-bootstrap rejection checkpoint and write its
-   milestone-completion.json. Report and restoration already verify; no GPU
-   work remains. Preserve all original and packaged verification failures.
-2. Run rust-star/.work/msrv-174-c7adfb22/run.py for the pinned Rust 1.74
-   compatibility issue. It requires restored accepted sources and prior closure,
-   preserves the expected compiler failure, changes only two Option calls, and
-   runs pinned host/build/artifact validation. Package the result and commit
-   locally; do not claim remote CI success or fresh model/performance evidence.
-3. Continue with rust-star/.work/routed-half-prefill-c7adfb22/run.py. Its source
-   and whole-kernel inverse proof, actual production arguments, scratch lifetime
-   observation, strict edge/A/A/mixed audits and prospective gates are prepared.
-   No integration unless local exactness and every selection criterion pass.
-   Full C0 and a separately frozen whole-engine study are required afterward.
-4. Continue directly to the next justified milestone after each result. Keep
-   initial-scope requirements visible, retain the immutable oracle and no-push
-   boundary, and leave the old 256K campaign paused until a justified new plan.
+1. Commit the verified Rust 1.74 compatibility milestone and record its local
+   closure. Preserve both compiler failures and the previous wide-bootstrap
+   rejection report. No model/GPU validation is running.
+2. Run rust-star/.work/routed-half-prefill-c7adfb22/run.py. Its complete-kernel
+   inverse, production arguments, scratch lifetime observation, edge cases,
+   two-session neutral/mixed design and selection thresholds are prepared.
+   Check active-run.json/execution.log before any concurrent work. Do not alter
+   frozen sources or integrate a candidate that fails exactness or selection.
+3. If selected, freeze a separate current-baseline integration/full-C0/engine
+   plan. Preserve every failed attempt and all scheduled pairs. Otherwise close
+   the hypothesis and continue to the next justified lower-context milestone.
+4. Continue toward the remaining initial-scope requirements without stopping at
+   an individual result. Keep the oracle and no-publication boundary intact;
+   do not automatically resume the interrupted 256K campaign.
 
 ## Entries
 

@@ -1,0 +1,27 @@
+{
+  "schema": "rust-star-msrv-source-observation-v1",
+  "observed_utc": "2026-09-12T06:03:32.812176+00:00",
+  "source_commit": "c7adfb22706d5a5883d8a251a3a9046a2c8e587b",
+  "source_sha256": "de0410c9615a33b4a30c9735d7563eae383cd47c48e0c1a36b3e20f797b856c6",
+  "accepted_source_sha256": "6abbf9deb2017d6697db5b63f631ea37aeaa2cf236bb25b6f41a61d664cc2054",
+  "affected_file": "rust-star/runtime/src/metal.rs",
+  "lines": [
+    6948,
+    6964
+  ],
+  "declared_rust_version": "1.74",
+  "workflow_toolchain": "1.74.0",
+  "documented_api_since": "1.82.0",
+  "official_source": "https://doc.rust-lang.org/std/option/enum.Option.html#method.is_none_or",
+  "status": "source-only observation; Rust 1.74 compilation not yet run",
+  "runtime_mutated": false,
+  "prospective_fix": "Use .map_or(true, predicate) at the two report-validation sites, preserving None and Some behavior.",
+  "scheduling_gate": "Finish current twelve-process engine block, final input/source pins, rejected-candidate report and source restoration before installing or compiling with another toolchain.",
+  "validation": [
+    "Preserve a failing check on accepted source with Rust 1.74.0",
+    "Change only the two Option calls after failure is verified",
+    "Run pinned Rust formatting, all host contracts, optimized build, Python artifact contracts, and writer-reader fixture",
+    "Keep GPU math and accepted performance executable identity distinct from this host compatibility change; no fresh model or performance claim",
+    "Do not claim remote CI success from local checks"
+  ]
+}

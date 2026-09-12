@@ -1,0 +1,2229 @@
+   Compiling rust-star-runtime v0.1.0 ($REPO/rust-star/runtime)
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10086:54
+      |
+10086 |         || report.layer4_qkv_checksums != layer4_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10089:18
+      |
+10089 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10094:54
+      |
+10094 |         || report.layer5_qkv_checksums != layer5_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10104:54
+      |
+10104 |         || report.layer6_qkv_checksums != layer6_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10107:18
+      |
+10107 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10112:54
+      |
+10112 |         || report.layer7_qkv_checksums != layer7_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10122:54
+      |
+10122 |         || report.layer8_qkv_checksums != layer8_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10125:18
+      |
+10125 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10130:54
+      |
+10130 |         || report.layer9_qkv_checksums != layer9_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10140:56
+      |
+10140 |         || report.layer10_qkv_checksums != layer10_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10143:18
+      |
+10143 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10148:56
+      |
+10148 |         || report.layer11_qkv_checksums != layer11_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10158:56
+      |
+10158 |         || report.layer12_qkv_checksums != layer12_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10161:18
+      |
+10161 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10166:56
+      |
+10166 |         || report.layer13_qkv_checksums != layer13_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10176:56
+      |
+10176 |         || report.layer14_qkv_checksums != layer14_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10179:18
+      |
+10179 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10184:56
+      |
+10184 |         || report.layer15_qkv_checksums != layer15_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10194:56
+      |
+10194 |         || report.layer16_qkv_checksums != layer16_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10197:18
+      |
+10197 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10202:56
+      |
+10202 |         || report.layer17_qkv_checksums != layer17_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10212:56
+      |
+10212 |         || report.layer18_qkv_checksums != layer18_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10215:18
+      |
+10215 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10220:56
+      |
+10220 |         || report.layer19_qkv_checksums != layer19_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10230:56
+      |
+10230 |         || report.layer20_qkv_checksums != layer20_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10233:18
+      |
+10233 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10238:56
+      |
+10238 |         || report.layer21_qkv_checksums != layer21_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10248:56
+      |
+10248 |         || report.layer22_qkv_checksums != layer22_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10251:18
+      |
+10251 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10256:56
+      |
+10256 |         || report.layer23_qkv_checksums != layer23_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10266:56
+      |
+10266 |         || report.layer24_qkv_checksums != layer24_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10269:18
+      |
+10269 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10274:56
+      |
+10274 |         || report.layer25_qkv_checksums != layer25_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10284:56
+      |
+10284 |         || report.layer26_qkv_checksums != layer26_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10287:18
+      |
+10287 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10292:56
+      |
+10292 |         || report.layer27_qkv_checksums != layer27_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10302:56
+      |
+10302 |         || report.layer28_qkv_checksums != layer28_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10305:18
+      |
+10305 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10310:56
+      |
+10310 |         || report.layer29_qkv_checksums != layer29_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10320:56
+      |
+10320 |         || report.layer30_qkv_checksums != layer30_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10323:18
+      |
+10323 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10328:56
+      |
+10328 |         || report.layer31_qkv_checksums != layer31_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10338:56
+      |
+10338 |         || report.layer32_qkv_checksums != layer32_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10341:18
+      |
+10341 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10346:56
+      |
+10346 |         || report.layer33_qkv_checksums != layer33_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10356:56
+      |
+10356 |         || report.layer34_qkv_checksums != layer34_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10359:18
+      |
+10359 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10364:56
+      |
+10364 |         || report.layer35_qkv_checksums != layer35_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10374:56
+      |
+10374 |         || report.layer36_qkv_checksums != layer36_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10377:18
+      |
+10377 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10382:56
+      |
+10382 |         || report.layer37_qkv_checksums != layer37_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10392:56
+      |
+10392 |         || report.layer38_qkv_checksums != layer38_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10395:18
+      |
+10395 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10400:56
+      |
+10400 |         || report.layer39_qkv_checksums != layer39_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10410:56
+      |
+10410 |         || report.layer40_qkv_checksums != layer40_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10413:18
+      |
+10413 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10418:56
+      |
+10418 |         || report.layer41_qkv_checksums != layer41_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10428:56
+      |
+10428 |         || report.layer42_qkv_checksums != layer42_qkv.each_ref().map(|tensor| checksum_f32(tensor))
+      |                                                        ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:10431:18
+      |
+10431 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34015:14
+      |
+34015 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34050:14
+      |
+34050 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34080:14
+      |
+34080 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34115:14
+      |
+34115 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34145:14
+      |
+34145 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34180:14
+      |
+34180 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34210:14
+      |
+34210 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34245:14
+      |
+34245 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34275:14
+      |
+34275 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34310:14
+      |
+34310 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34340:14
+      |
+34340 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34375:14
+      |
+34375 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34405:14
+      |
+34405 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34440:14
+      |
+34440 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34470:14
+      |
+34470 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34505:14
+      |
+34505 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34535:14
+      |
+34535 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34570:14
+      |
+34570 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34600:14
+      |
+34600 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34635:14
+      |
+34635 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34665:14
+      |
+34665 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34700:14
+      |
+34700 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34730:14
+      |
+34730 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34765:14
+      |
+34765 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34795:14
+      |
+34795 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34830:14
+      |
+34830 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34860:14
+      |
+34860 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34895:14
+      |
+34895 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34925:14
+      |
+34925 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34960:14
+      |
+34960 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:34990:14
+      |
+34990 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:35025:14
+      |
+35025 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:35055:14
+      |
+35055 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:35090:14
+      |
+35090 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:35120:14
+      |
+35120 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:35155:14
+      |
+35155 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:35185:14
+      |
+35185 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:35220:14
+      |
+35220 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:35250:14
+      |
+35250 |             .each_mut()
+      |              ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:43974:22
+      |
+43974 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:43977:22
+      |
+43977 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:43983:22
+      |
+43983 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:43994:22
+      |
+43994 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:43997:22
+      |
+43997 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44003:22
+      |
+44003 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44014:22
+      |
+44014 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44017:22
+      |
+44017 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44023:22
+      |
+44023 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44034:22
+      |
+44034 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44037:22
+      |
+44037 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44045:22
+      |
+44045 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44058:22
+      |
+44058 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44061:22
+      |
+44061 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44069:22
+      |
+44069 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44082:22
+      |
+44082 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44085:22
+      |
+44085 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44093:22
+      |
+44093 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44106:22
+      |
+44106 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44109:22
+      |
+44109 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44117:22
+      |
+44117 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44130:22
+      |
+44130 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44133:22
+      |
+44133 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44141:22
+      |
+44141 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44154:22
+      |
+44154 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44157:22
+      |
+44157 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44165:22
+      |
+44165 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44178:22
+      |
+44178 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44181:22
+      |
+44181 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44189:22
+      |
+44189 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44202:22
+      |
+44202 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44205:22
+      |
+44205 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44213:22
+      |
+44213 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44226:22
+      |
+44226 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44229:22
+      |
+44229 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44237:22
+      |
+44237 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44250:22
+      |
+44250 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44253:22
+      |
+44253 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44261:22
+      |
+44261 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44274:22
+      |
+44274 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44277:22
+      |
+44277 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44285:22
+      |
+44285 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44298:22
+      |
+44298 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44301:22
+      |
+44301 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44309:22
+      |
+44309 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44322:22
+      |
+44322 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44325:22
+      |
+44325 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44333:22
+      |
+44333 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44346:22
+      |
+44346 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44349:22
+      |
+44349 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44357:22
+      |
+44357 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44370:22
+      |
+44370 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44373:22
+      |
+44373 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44381:22
+      |
+44381 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44394:22
+      |
+44394 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44397:22
+      |
+44397 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44405:22
+      |
+44405 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44418:22
+      |
+44418 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:44421:22
+      |
+44421 |                     .each_ref()
+      |                      ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+For more information about this error, try `rustc --explain E0658`.
+error: could not compile `rust-star-runtime` (lib) due to 157 previous errors
+warning: build failed, waiting for other jobs to finish...
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59626:18
+      |
+59626 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59630:18
+      |
+59630 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59637:18
+      |
+59637 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59652:18
+      |
+59652 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59656:18
+      |
+59656 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59663:18
+      |
+59663 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59678:18
+      |
+59678 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59682:18
+      |
+59682 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59689:18
+      |
+59689 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59704:18
+      |
+59704 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59708:18
+      |
+59708 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59715:18
+      |
+59715 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59730:18
+      |
+59730 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59734:18
+      |
+59734 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59741:18
+      |
+59741 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59756:18
+      |
+59756 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59760:18
+      |
+59760 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59767:18
+      |
+59767 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59782:18
+      |
+59782 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59786:18
+      |
+59786 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59793:18
+      |
+59793 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59808:18
+      |
+59808 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59812:18
+      |
+59812 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59819:18
+      |
+59819 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59834:18
+      |
+59834 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59838:18
+      |
+59838 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59845:18
+      |
+59845 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59860:18
+      |
+59860 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59864:18
+      |
+59864 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59871:18
+      |
+59871 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59886:18
+      |
+59886 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59890:18
+      |
+59890 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59897:18
+      |
+59897 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59912:18
+      |
+59912 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59916:18
+      |
+59916 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59923:18
+      |
+59923 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59938:18
+      |
+59938 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59942:18
+      |
+59942 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59949:18
+      |
+59949 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59964:18
+      |
+59964 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59968:18
+      |
+59968 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59975:18
+      |
+59975 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59990:18
+      |
+59990 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:59994:18
+      |
+59994 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:60001:18
+      |
+60001 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:60016:18
+      |
+60016 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:60020:18
+      |
+60020 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:60027:18
+      |
+60027 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:60042:18
+      |
+60042 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:60046:18
+      |
+60046 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:60053:18
+      |
+60053 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:60068:18
+      |
+60068 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:60072:18
+      |
+60072 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:60079:18
+      |
+60079 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:60094:18
+      |
+60094 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:60098:18
+      |
+60098 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:60105:18
+      |
+60105 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:60120:18
+      |
+60120 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:60124:18
+      |
+60124 |                 .each_ref()
+      |                  ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:63655:21
+      |
+63655 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:63694:21
+      |
+63694 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:63715:21
+      |
+63715 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:63736:21
+      |
+63736 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:63815:21
+      |
+63815 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:63880:21
+      |
+63880 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:63915:25
+      |
+63915 |             diagnostics.each_ref().map(|tensor| tensor.len()),
+      |                         ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:63939:21
+      |
+63939 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64004:21
+      |
+64004 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64039:25
+      |
+64039 |             diagnostics.each_ref().map(|tensor| tensor.len()),
+      |                         ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64063:21
+      |
+64063 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64128:21
+      |
+64128 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64163:25
+      |
+64163 |             diagnostics.each_ref().map(|tensor| tensor.len()),
+      |                         ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64187:21
+      |
+64187 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64252:21
+      |
+64252 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64287:25
+      |
+64287 |             diagnostics.each_ref().map(|tensor| tensor.len()),
+      |                         ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64311:21
+      |
+64311 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64376:21
+      |
+64376 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64411:25
+      |
+64411 |             diagnostics.each_ref().map(|tensor| tensor.len()),
+      |                         ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64435:21
+      |
+64435 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64500:21
+      |
+64500 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64535:25
+      |
+64535 |             diagnostics.each_ref().map(|tensor| tensor.len()),
+      |                         ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64559:21
+      |
+64559 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64624:21
+      |
+64624 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64659:25
+      |
+64659 |             diagnostics.each_ref().map(|tensor| tensor.len()),
+      |                         ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64683:21
+      |
+64683 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64748:21
+      |
+64748 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64783:25
+      |
+64783 |             diagnostics.each_ref().map(|tensor| tensor.len()),
+      |                         ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64807:21
+      |
+64807 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64872:21
+      |
+64872 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64907:25
+      |
+64907 |             diagnostics.each_ref().map(|tensor| tensor.len()),
+      |                         ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64931:21
+      |
+64931 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:64996:21
+      |
+64996 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65031:25
+      |
+65031 |             diagnostics.each_ref().map(|tensor| tensor.len()),
+      |                         ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65055:21
+      |
+65055 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65120:21
+      |
+65120 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65155:25
+      |
+65155 |             diagnostics.each_ref().map(|tensor| tensor.len()),
+      |                         ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65179:21
+      |
+65179 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65244:21
+      |
+65244 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65279:25
+      |
+65279 |             diagnostics.each_ref().map(|tensor| tensor.len()),
+      |                         ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65303:21
+      |
+65303 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65368:21
+      |
+65368 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65403:25
+      |
+65403 |             diagnostics.each_ref().map(|tensor| tensor.len()),
+      |                         ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65427:21
+      |
+65427 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65492:21
+      |
+65492 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65527:25
+      |
+65527 |             diagnostics.each_ref().map(|tensor| tensor.len()),
+      |                         ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65551:21
+      |
+65551 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65616:21
+      |
+65616 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65651:25
+      |
+65651 |             diagnostics.each_ref().map(|tensor| tensor.len()),
+      |                         ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65675:21
+      |
+65675 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65740:21
+      |
+65740 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65775:25
+      |
+65775 |             diagnostics.each_ref().map(|tensor| tensor.len()),
+      |                         ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65799:21
+      |
+65799 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65864:21
+      |
+65864 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65899:25
+      |
+65899 |             diagnostics.each_ref().map(|tensor| tensor.len()),
+      |                         ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65923:21
+      |
+65923 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:65988:21
+      |
+65988 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:66023:25
+      |
+66023 |             diagnostics.each_ref().map(|tensor| tensor.len()),
+      |                         ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:66077:25
+      |
+66077 |             diagnostics.each_ref().map(|tensor| tensor.len()),
+      |                         ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:66099:25
+      |
+66099 |             diagnostics.each_ref().map(|tensor| tensor.len()),
+      |                         ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:66218:21
+      |
+66218 |             tensors.each_ref().map(|tensor| tensor.len()),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error[E0658]: use of unstable library feature 'array_methods'
+     --> src/metal.rs:66230:21
+      |
+66230 |             tensors.each_ref().map(|tensor| checksum_f32(tensor)),
+      |                     ^^^^^^^^
+      |
+      = note: see issue #76118 <https://github.com/rust-lang/rust/issues/76118> for more information
+
+error: could not compile `rust-star-runtime` (lib test) due to 278 previous errors

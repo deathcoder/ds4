@@ -1,0 +1,12 @@
+START install-toolchain 2026-09-12T06:30:29.658653+00:00
+END install-toolchain 0
+START accepted-check-failure 2026-09-12T06:31:04.573860+00:00
+END accepted-check-failure 101
+START format 2026-09-12T06:32:20.795136+00:00
+END format 0
+START host-tests 2026-09-12T06:32:21.912597+00:00
+END host-tests 101
+Traceback (most recent call last):
+  File "$FIRST_ATTEMPT/run.py", line 34, in <module>
+    for name,cmd in commands:assert sources()==candidate;assert run(name,cmd)==0,name
+AssertionError: host-tests
