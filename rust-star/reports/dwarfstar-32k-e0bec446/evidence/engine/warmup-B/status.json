@@ -1,0 +1,11 @@
+{
+  "name": "warmup-B",
+  "role": "B",
+  "pair": null,
+  "warmup": true,
+  "started_utc": "2026-09-12T18:51:26.725517+00:00",
+  "finished_utc": "2026-09-12T18:56:02.667022+00:00",
+  "exit_code": 0,
+  "adapter_wall_seconds": 275.917577375,
+  "executable_sha256": "7590af7ade11d5b07d65f0fefc9e01c02668318896fc4e955307888d85cdaa35"
+}

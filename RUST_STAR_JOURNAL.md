@@ -18,6 +18,41 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-12 — Complete direct 32K DwarfStar comparison
+
+- All twelve fresh engine processes pass: two excluded warmups and five fixed
+  AB/BA/AB/BA/AB pairs. No repeats or speed exclusions. Result: prefill latency +16.853%, steady decode throughput +2.002%, peak RSS +5.527% (paired Rust/DwarfStar medians).
+- Existing strict adapters validate sampling-inclusive timing; all Rust timed
+  transcripts match. Unchanged pinned DwarfStar uses its accepted producer
+  evidence; its CSV does not expose a fresh transcript or full-logit claim.
+- Complete before/after model, prompt, oracle, 7,669 fixture and 42 source pins
+  pass. Accepted Rust executable remains 7590af7ade11d5b07d65f0fefc9e01c02668318896fc4e955307888d85cdaa35.
+  Prior 223-artifact acceptance report re-verifies, including 50,031,360 exact
+  FP32 comparisons. No runtime edits, rebuilds or model inference repeats.
+- All 4,466 saved profile intervals regenerate byte-identically. Initial replay
+  failed on Python tuple-versus-JSON-list equality in the existing-file branch;
+  unchanged audit in a fresh temporary directory reproduces every saved byte.
+  Preserve the failed replay. Largest component remains routed gate/up, 30.150s.
+- Portable report: rust-star/reports/dwarfstar-32k-e0bec446/README.md.
+  Verifier recomputes all pairs and rejects corrupted sampling/transcript
+  metadata even after its artifact hashes are updated. Five pairs do not
+  establish statistical significance; this comparison is limited to 32K/128.
+- Next milestone, NOT STARTED: Audit whether wider routed gate/up token tiles can reuse dequantized expert weights while preserving each output accumulation order, then screen one bounded layout or scheduling hypothesis with exact intermediate comparisons and contemporary A/A controls. Preserve the failed routed-input-half screens. Freeze criteria before timing; stop on failed neutrality. Full C0 and whole-engine evidence are required before any later runtime acceptance.
+- Finish local commit and user update, then STOP. Oracle-v5 immutable;
+  publication deferred; 256K remains paused.
+
+## 2026-09-12 — Start direct 32K comparison against pinned DwarfStar
+
+- D authorized the next single milestone. Measurement only: unchanged accepted
+  Rust e0bec446 versus oracle-v5 ccbd16d3, same model and 32K/128 workload.
+- Frozen protocol: one excluded warmup per engine, five AB/BA/AB/BA/AB pairs,
+  strict existing adapters, sampling-inclusive timing and passive host records.
+  Reuse verified full-C0 evidence; do not call timed transcript checks full C0.
+- Evidence: rust-star/.work/dwarfstar-32k-e0bec446. Verify complete input pins
+  before and after; stop on failure, preserve all runs, no speed exclusions.
+- Finish portable report, next bottleneck proposal, local commit and update,
+  then STOP. No optimization edits, larger frontiers or publication.
+
 ## 2026-09-12 — Complete selective scratch initialization: retained
 
 - New guarded copy-then-in-place-mutation proof passes: 24 cases,
@@ -5684,11 +5719,15 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-12)
 
-- COMPLETED SINGLE MILESTONE: selective scratch initialization retained.
+- COMPLETED SINGLE MILESTONE: direct 32K DwarfStar comparison.
+  prefill latency +16.853%, steady decode throughput +2.002%, peak RSS +5.527% (paired Rust/DwarfStar medians).
+  Report: rust-star/reports/dwarfstar-32k-e0bec446/README.md.
+  Runtime unchanged. Report next proposal, then STOP.
+- COMPLETED: selective scratch initialization retained.
   prefill -11.054%, steady decode +1.362%, RSS +1.819%, footprint +3.728%.
   Candidate production source and executable are retained locally.
   Report: rust-star/reports/selective-clear-db1de4a9/README.md (223 artifacts verify).
-  Current work is complete; report the result and next proposal, then STOP.
+  Accepted runtime is unchanged during the direct comparison.
   Explicit scratch reuse remains rejected on RSS; full C0/pool proofs and all 12
   engine runs are preserved in rust-star/reports/pool-1k-fcdfef5f/README.md.
   Wide bootstrap c7adfb22 is rejected
@@ -6660,13 +6699,12 @@ Next:
 
 ## Immediate Next Actions
 
-1. Selective scratch initialization is complete: RETAINED. Preserve all
-   verified evidence and final source/executable identities.
-2. Report full correctness/ownership and engine/memory results with their
-   32K scope. Rust-versus-Rust gains are not DwarfStar parity.
-3. Next proposal, not started: Refresh the direct 32K comparison between the newly accepted Rust runtime and pinned DwarfStar on the same model, prompt and 128-token decode workload. Use fresh paired processes and the existing strict measurement adapters to quantify the remaining performance gap, then choose the next bottleneck from the current profile. Keep larger-frontier work and publication deferred. This proposal has not started.
-4. STOP after the update. Keep oracle-v5 immutable, 256K paused and publication
-   deferred; do not begin the next milestone automatically.
+1. Direct 32K DwarfStar measurement milestone is complete. Preserve all raw
+   results, portable verification and unchanged runtime identities.
+2. Report the measured reference gap and the 32K-only limits.
+3. Next proposal, not started: Audit whether wider routed gate/up token tiles can reuse dequantized expert weights while preserving each output accumulation order, then screen one bounded layout or scheduling hypothesis with exact intermediate comparisons and contemporary A/A controls. Preserve the failed routed-input-half screens. Freeze criteria before timing; stop on failed neutrality. Full C0 and whole-engine evidence are required before any later runtime acceptance.
+4. STOP after local commit and user update. Keep oracle-v5 immutable,
+   publication deferred and 256K paused.
 
 ## Entries
 

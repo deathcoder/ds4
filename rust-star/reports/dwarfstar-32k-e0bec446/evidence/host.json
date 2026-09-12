@@ -1,0 +1,18 @@
+{
+  "os": {
+    "exit_code": 0,
+    "stdout": "ProductName:\t\tmacOS\nProductVersion:\t\t26.5.2\nBuildVersion:\t\t25F84\n"
+  },
+  "hardware": {
+    "exit_code": 0,
+    "stdout": "Hardware:\n\n    Hardware Overview:\n\n      Model Name: Mac Studio\n      Model Identifier: Mac13,2\n      Model Number: Z14K000FZT/A\n      Chip: Apple M1 Ultra\n      Total Number of Cores: 20 (16 Performance and 4 Efficiency)\n      Memory: 128 GB\n      System Firmware Version: 18000.121.3\n      OS Loader Version: 18000.121.3\n      Activation Lock Status: Enabled\n\nGraphics/Displays:\n\n    Apple M1 Ultra:\n\n      Chipset Model: Apple M1 Ultra\n      Type: GPU\n      Bus: Built-In\n      Total Number of Cores: 48\n      Vendor: Apple (0x106b)\n      Metal Support: Metal 4\n      Displays:\n        U27B3CF:\n          Resolution: 5120 x 2880 (5K/UHD+ - Ultra High Definition Plus)\n          UI Looks like: 2560 x 1440 @ 60.00Hz\n          Main Display: Yes\n          Mirror: Off\n          Online: Yes\n          Rotation: Supported\n          Automatically Adjust Brightness: No\n        VP2768 Series:\n          Resolution: 2560 x 1440 (QHD/WQHD - Wide Quad High Definition)\n          UI Looks like: 2560 x 1440 @ 60.00Hz\n          Mirror: Off\n          Online: Yes\n          Rotation: Supported\n"
+  },
+  "uptime": {
+    "exit_code": 0,
+    "stdout": "20:45  up 13:56, 4 users, load averages: 4.21 3.80 2.99\n"
+  },
+  "thermal": {
+    "exit_code": 0,
+    "stdout": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded\n"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "runs": 12,
+  "timed_pairs": 5,
+  "paired_ratio_medians": {
+    "prefill_ms": 1.1685323167390949,
+    "prefill_tps": 0.8557743638514842,
+    "gen_steady_tps": 1.0200163016148314,
+    "gen_tps": 1.0189374013499775,
+    "gen_first_ms": 1.2139902848519146,
+    "process_wall_ms": 1.191502941483043,
+    "process_peak_bytes": 1.0552656606441375
+  },
+  "host_observations": 105,
+  "unusual_thermal_count": 0
+}

@@ -1,0 +1,12 @@
+[
+  {
+    "role": "A",
+    "rejected": true,
+    "reason": "DwarfStar CSV lacks sampling-inclusive timing; legacy steady timers exclude argmax and cannot satisfy the paired protocol"
+  },
+  {
+    "role": "B",
+    "rejected": true,
+    "reason": "Rust Star engine run did not preserve the oracle transcript"
+  }
+]

@@ -1,0 +1,50 @@
+{
+  "schema": "rust-star-direct-reference-comparison-v1",
+  "created_utc": "2026-09-12T18:45:53.618728+00:00",
+  "runtime_commit": "e0bec446d2c9d765a7e839f954d74829cbb025b0",
+  "runtime_tree": "791a9de1a845f26a2c880a95299dcb97b9db6a3f",
+  "context": 32768,
+  "gen_tokens": 128,
+  "orders": [
+    "AB",
+    "BA",
+    "AB",
+    "BA",
+    "AB"
+  ],
+  "warmups": [
+    "A",
+    "B"
+  ],
+  "role_A": "pinned DwarfStar oracle-v5",
+  "role_B": "accepted Rust Star selective initialization, Rust1.74",
+  "executables": {
+    "A": "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/oracle-v5-source/ds4-bench",
+    "B": "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/release/rust-star"
+  },
+  "executable_sha256": {
+    "A": "a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0",
+    "B": "7590af7ade11d5b07d65f0fefc9e01c02668318896fc4e955307888d85cdaa35"
+  },
+  "model": "/Users/deathcodevision/dev/ds4/gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+  "prompt": "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/speed-bench/promessi_sposi.txt",
+  "model_stat": {
+    "size": 86720111488,
+    "mtime_ns": 1785574798142694474
+  },
+  "primary_comparison": "Rust/DwarfStar paired prefill latency ratio; no optimization retention decision",
+  "secondary_metrics": [
+    "gen_steady_tps",
+    "gen_tps",
+    "gen_first_ms",
+    "process_wall_ms",
+    "process_peak_bytes"
+  ],
+  "timing": "Both sampling inclusive; prefill includes initial selection, each decode eval includes resulting token selection. Exact single frontier; built-in weight warming. No profiling/correctness collection in timed runs.",
+  "correctness": "Unchanged oracle-v5 source/executable and accepted Rust full C0 evidence (50031360 exact FP32 comparisons) reused. Rust timed runs check fixed transcript. DwarfStar CSV does not expose a per-run transcript: correctness rests on pinned producer acceptance, not a new full-logit capture.",
+  "failure_policy": "Stop on any process, parser, pin or correctness failure; preserve all evidence. No discretionary repeats or exclusions. Warmups excluded prospectively. Every completed pair included regardless of speed. No parity claim from transcript alone; no statistical significance claim from five pairs.",
+  "reporting": "Median/MAD/min/max, all paired ratios, separate AB and BA medians, raw host observations. Reference zero snapshot bytes is unavailable KV memory, not zero.",
+  "no_256k": true,
+  "no_push": true,
+  "stop_after_milestone": true
+}

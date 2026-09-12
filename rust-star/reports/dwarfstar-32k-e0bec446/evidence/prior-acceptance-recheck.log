@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "artifacts": 223,
+  "full_fp32_words": 50031360,
+  "mutation_proof_passed": true,
+  "pool_contract_passed": true,
+  "engine_completed": true,
+  "retained": true,
+  "corrupted_pool_records_rejected": 2
+}

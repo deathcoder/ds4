@@ -1,0 +1,11 @@
+{
+  "name": "pair-3-B",
+  "role": "B",
+  "pair": 3,
+  "warmup": false,
+  "started_utc": "2026-09-12T19:13:52.855731+00:00",
+  "finished_utc": "2026-09-12T19:17:46.865719+00:00",
+  "exit_code": 0,
+  "adapter_wall_seconds": 233.99712945800002,
+  "executable_sha256": "7590af7ade11d5b07d65f0fefc9e01c02668318896fc4e955307888d85cdaa35"
+}

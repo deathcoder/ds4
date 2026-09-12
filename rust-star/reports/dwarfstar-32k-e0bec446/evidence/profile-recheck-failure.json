@@ -1,0 +1,83 @@
+{
+  "error": "saved profile audit != recomputed result",
+  "differences": {
+    "ranked_tail_components": {
+      "old": [
+        [
+          "tail/routed_gate_up",
+          30150.13535916699
+        ],
+        [
+          "tail/attention_output",
+          21237.692049324993
+        ],
+        [
+          "tail/routed_down",
+          16403.301745057994
+        ],
+        [
+          "tail/shared_expert",
+          4971.885589521002
+        ],
+        [
+          "tail/final_hc",
+          1114.4623099630003
+        ],
+        [
+          "tail/ffn_ingress",
+          720.935451412
+        ],
+        [
+          "tail/routed_map",
+          322.90428589700014
+        ],
+        [
+          "tail/router",
+          262.539901363
+        ],
+        [
+          "tail/routed_sum",
+          195.40551660700004
+        ]
+      ],
+      "new": [
+        [
+          "tail/routed_gate_up",
+          30150.13535916699
+        ],
+        [
+          "tail/attention_output",
+          21237.692049324993
+        ],
+        [
+          "tail/routed_down",
+          16403.301745057994
+        ],
+        [
+          "tail/shared_expert",
+          4971.885589521002
+        ],
+        [
+          "tail/final_hc",
+          1114.4623099630003
+        ],
+        [
+          "tail/ffn_ingress",
+          720.935451412
+        ],
+        [
+          "tail/routed_map",
+          322.90428589700014
+        ],
+        [
+          "tail/router",
+          262.539901363
+        ],
+        [
+          "tail/routed_sum",
+          195.40551660700004
+        ]
+      ]
+    }
+  }
+}

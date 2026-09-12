@@ -1,0 +1,11 @@
+{
+  "name": "pair-4-A",
+  "role": "A",
+  "pair": 4,
+  "warmup": false,
+  "started_utc": "2026-09-12T19:21:42.439110+00:00",
+  "finished_utc": "2026-09-12T19:24:59.028385+00:00",
+  "exit_code": 0,
+  "adapter_wall_seconds": 196.58824479100008,
+  "executable_sha256": "a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0"
+}

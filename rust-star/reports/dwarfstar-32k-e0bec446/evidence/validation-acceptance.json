@@ -1,0 +1,35 @@
+{
+  "passed": true,
+  "runs": [
+    {
+      "name": "candidate-12k-internal",
+      "exit_code": 0,
+      "started_utc": "2026-09-12T16:46:57.461106+00:00",
+      "finished_utc": "2026-09-12T16:49:21.655379+00:00",
+      "elapsed_seconds": 144.193543417,
+      "executable_sha256": "7590af7ade11d5b07d65f0fefc9e01c02668318896fc4e955307888d85cdaa35",
+      "peak_rss_bytes": 6635487232
+    },
+    {
+      "name": "candidate-32k-output",
+      "exit_code": 0,
+      "started_utc": "2026-09-12T16:49:24.036493+00:00",
+      "finished_utc": "2026-09-12T16:53:15.840819+00:00",
+      "elapsed_seconds": 231.803153,
+      "executable_sha256": "7590af7ade11d5b07d65f0fefc9e01c02668318896fc4e955307888d85cdaa35",
+      "peak_rss_bytes": 4942741504
+    },
+    {
+      "name": "candidate-32k-profiled",
+      "exit_code": 0,
+      "started_utc": "2026-09-12T16:53:18.195637+00:00",
+      "finished_utc": "2026-09-12T16:56:59.914250+00:00",
+      "elapsed_seconds": 221.72902412499997,
+      "executable_sha256": "7590af7ade11d5b07d65f0fefc9e01c02668318896fc4e955307888d85cdaa35",
+      "peak_rss_bytes": 4960354304
+    }
+  ],
+  "full_fp32_words_per_full_run": 16677120,
+  "full_fp32_words_total": 33354240,
+  "internal_12k": true
+}

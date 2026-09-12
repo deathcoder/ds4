@@ -630,7 +630,14 @@ Its new guarded mutation proof closes the prior test gap without rewriting the
 old diagnostic verdict. Four full-copy destinations omit clearing; source
 initializers and checked completion are preserved. prefill -11.054%, steady decode +1.362%, RSS +1.819%, footprint +3.728%.
 Candidate production source and executable are retained locally. Verified 223-artifact report:
-`rust-star/reports/selective-clear-db1de4a9/README.md`. Next milestone, not started: Refresh the direct 32K comparison between the newly accepted Rust runtime and pinned DwarfStar on the same model, prompt and 128-token decode workload. Use fresh paired processes and the existing strict measurement adapters to quantify the remaining performance gap, then choose the next bottleneck from the current profile. Keep larger-frontier work and publication deferred. This proposal has not started.
+`rust-star/reports/selective-clear-db1de4a9/README.md`. The subsequent direct 32K/128 comparison at e0bec446 is complete:
+prefill latency +16.853%, steady decode throughput +2.002%, peak RSS +5.527% (paired Rust/DwarfStar medians). All two warmups and five alternating pairs pass, with complete
+before/after input pins and unchanged accepted runtime. Verified report:
+`rust-star/reports/dwarfstar-32k-e0bec446/README.md`. Full C0 evidence is reused
+for unchanged binaries; timed Rust transcript checks are not new full C0, and
+DwarfStar CSV has no per-run transcript. All 4,466 accepted profile intervals
+replay exactly; routed gate/up remains largest at 30.150s. Next milestone,
+not started: Audit whether wider routed gate/up token tiles can reuse dequantized expert weights while preserving each output accumulation order, then screen one bounded layout or scheduling hypothesis with exact intermediate comparisons and contemporary A/A controls. Preserve the failed routed-input-half screens. Freeze criteria before timing; stop on failed neutrality. Full C0 and whole-engine evidence are required before any later runtime acceptance. Larger frontiers and publication stay deferred.
 Stop after reporting this completed milestone.
 
 Current implementation boundaries, evidence, and immediate actions are maintained

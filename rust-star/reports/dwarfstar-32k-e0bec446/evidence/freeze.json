@@ -1,0 +1,25 @@
+{
+  "utc": "2026-09-12T18:46:51.616389+00:00",
+  "files": {
+    "candidate-build.json": "0e1948830b460ad3f4ffdb361d28651ca38c982842f2f1640eb87a0373cc7011",
+    "final-runtime-state.json": "fcfbfa1229efec4ef85433683096ff28196f6f29993a023bf4807dc38728124f",
+    "run.py": "f72b90058ddfddd9087006a7cfa5c705d703d3c1fff615c9ff795d4c897c5630",
+    "host.json": "1ab58935ba9b2adb32022fece939b7afb4abfda9682329c1f78d8c5882c7b26a",
+    "oracle-v5-benchmark-build.json": "feb7815c03c199ed9eeea974f27c42c21bc8a7db02e4d68ec32a98068d15163f",
+    "plan.json": "6ee5cd0b1e2924890319c738e2650144c05209a1917abebb8882521796e783e1",
+    "adapter-tests.log": "d55ce18d45ad558aeb5073d26b25c1f7da6e61316c2ddd349141fa1a2c17cf4c",
+    "oracle-32k.json": "ea7a152709d145948fd5710ac1b93212dc93d5a1a2c633e09f9ef31ab1ddd1f1",
+    "pins.py": "656e4bdd9a914bfd9d8cc07beb74719cd570bebb88177eefe2a8b4d5011347f1",
+    "candidate-32k-profiled.log": "399702f157c7c28d9a076e84f032cfebffba64419c5f4c30219e51e39292acd0",
+    "prior-plan.json": "8283268b1b102fbf08d9e19d5fedd3e935bf636bee5ccba9e2e8d0ff0d1afbce",
+    "validation-acceptance.json": "6cedab44bbf20f8e429621cb915c8c935f3a74df52fa56aa9cfdf0cf2df9bdcd",
+    "profile-audit.json": "a598027d2f4612692b7d9379e84505f12d5b87015b78a91b57aac674d423d32c",
+    "audit-profile.py": "c51ef2effa8fd173cbd0d8d332ab9fba1a277a55bbeb19525f49861bf455a351",
+    "candidate-32k-profiled.json": "ea7a152709d145948fd5710ac1b93212dc93d5a1a2c633e09f9ef31ab1ddd1f1",
+    "prepare.py": "7fc4a8b806c8852aa065a1882537a25a7a08938c97611cd3d258646156d5ee38",
+    "adapters/dwarfstar_measurement_lib.py": "2cc745e2dce7d5959af0fc2418e152483d600231b65e716077d674a7a23ad517",
+    "adapters/measure_dwarfstar.py": "66bbe322721ba5b867a19bac85dd8ff090ea65a2b8f88df7cd8ce9b40c851fb6",
+    "adapters/ruststar_measurement_lib.py": "902f671cf16554917ae3040204f98e4a8eb7bddfd6017f169577aefd9cfd7af4",
+    "adapters/measure_ruststar.py": "88344abcf4457a310b3cb68dfc3e96f71c7b06c3c2e416582a15c5e6f3ff9b86"
+  }
+}
