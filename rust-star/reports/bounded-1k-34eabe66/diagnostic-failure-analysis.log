@@ -1,0 +1,44 @@
+{
+  "structure_passed": true,
+  "criteria_pass": false,
+  "violations": [
+    {
+      "index": 54,
+      "position": 16384,
+      "phase": "after_pool",
+      "failed": [
+        "entry_and_pool_scratch_zero"
+      ]
+    },
+    {
+      "index": 55,
+      "position": 17408,
+      "phase": "entry",
+      "failed": [
+        "previous_scratch_zero",
+        "entry_and_pool_scratch_zero"
+      ]
+    },
+    {
+      "index": 56,
+      "position": 17408,
+      "phase": "registered",
+      "failed": [
+        "previous_scratch_zero",
+        "single_instance_per_scratch",
+        "registered_exactly_one_set"
+      ]
+    },
+    {
+      "index": 57,
+      "position": 17408,
+      "phase": "submitted",
+      "failed": [
+        "previous_scratch_zero",
+        "single_instance_per_scratch"
+      ]
+    }
+  ],
+  "max_unfinished_commands": 1,
+  "peak_scratch_bytes": 2493173233
+}

@@ -1,0 +1,14 @@
+{
+  "name": "diagnostic-build",
+  "args": [
+    "cargo",
+    "+1.74.0",
+    "build",
+    "--release",
+    "--locked",
+    "--manifest-path",
+    "rust-star/runtime/Cargo.toml"
+  ],
+  "exit_code": 0,
+  "log_sha256": "158a9b550634297d6f0c51a1bff3670ae182b6f9db2fb3296cfce582755ec7c4"
+}

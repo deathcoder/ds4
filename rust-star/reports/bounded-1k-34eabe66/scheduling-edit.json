@@ -1,0 +1,7 @@
+{
+  "before": "            [context.prefillBoundaryCommands addObject:command];",
+  "after": "            [context.prefillBoundaryCommands addObject:command];\n            // Drain this tile before another call allocates or initializes scratch.\n            // The final tile already waits below; keep its complete batch audit.\n            if (native_1k_bootstrap && position_start + rows < prefill_rows) {\n                if (!command_succeeded(command, error, error_bytes)) return 0;\n            }",
+  "prior_sha256": "50e1d122628f7d51d1214253892accba38b4e3249059c74ee3d7ec163e66c063",
+  "candidate_sha256": "23373a6eb2165ebc199ba310e39d349cf31e73891256a397f668afc80f6328bd",
+  "inverse_exact": true
+}

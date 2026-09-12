@@ -1,0 +1,19 @@
+START ring-audit
+PASS ring-audit
+START host-tests
+PASS host-tests
+START release-build
+PASS release-build
+START format-check
+PASS format-check
+START router-build
+PASS router-build
+START router-probe
+PASS router-probe
+START observer-build
+PASS observer-build
+START observer-proof
+PASS observer-proof
+START diagnostic-build
+PASS diagnostic-build
+FROZEN production and diagnostic candidates; production source active

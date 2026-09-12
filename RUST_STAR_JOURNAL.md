@@ -18,6 +18,59 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-12 — Close bounded 1K: exact outputs, failed scratch-lifetime gate
+
+- All 320 Rust tests, production/diagnostic optimized builds, formatting, router
+  GPU checks (7,840 words/96 guards), 1,567 ring cases and observer ownership
+  proof pass. 12K internal plus normal/profiled/lifetime 32K/128 checks pass;
+  three full runs compare 50,031,360 FP32 words exactly. All 4,466 profile
+  intervals pass. No correctness failure or repeated inference.
+- The frozen lifetime auditor fails a real post-pool condition. At frontier
+  20480, tile16384 reports completed but its after_pool snapshot still observes
+  1,977,044,465 scratch bytes. At tile17408 entry, 1,420,731,848 previous bytes
+  remain; at registration/submission, three older buffers total 5,242,880 bytes.
+  The following pool snapshot is zero. Supplemental analysis preserves all four
+  violating snapshots and confirms complete 28-tile/119-snapshot accounting.
+- Maximum unfinished command count is one and sampled global scratch peak is
+  2,493,173,233 bytes, 75% below the previous four-set trace. Neither result
+  overrides the failed per-tile ownership prerequisite. Completed status and a
+  local pool drain did not coincide with immediate disappearance of every
+  observed buffer; the remaining owner/exact release timing is unproved.
+- Reject before engine timing: zero warmups/pairs, no threshold changes or
+  repeats. Full input-after model/oracle/prompt/7,669-fixture hashes pass before
+  restoration. All 42 accepted source hashes and the default 2bf77edb executable
+  are restored/unchanged. A separate prior-default copy and both candidates are
+  preserved. GPU/validation/hash sessions are complete and drained.
+- Verified report: rust-star/reports/bounded-1k-34eabe66/README.md. First portable
+  verification passes 116 artifacts, source reconstruction, complete C0/profile/
+  ring accounting, reproduction of the original failed assertion, all failure
+  observations and final restoration. Output is in
+  rust-star/.work/bounded-1k-34eabe66/verify-execution.log. No verifier retry.
+- Whitespace review preserves exact raw artifacts: the full staged check flags
+  only host-tests.log (blank EOF) and three original patch-context space lines
+  in implementation.patch. All other staged files pass with those two exact
+  report paths excluded. Their verified bytes remain unchanged.
+- Next milestone, NOT STARTED: explicit bounded scratch reuse with completion
+  and per-buffer ownership/full-write proofs, a prospectively defined pool
+  identity/capacity contract, fresh C0 and unchanged engine/memory gates. Do not
+  relabel this candidate as passing or assume an extra wait ensures destruction.
+  Commit/report this milestone, then STOP. No publication or 256K work.
+
+## 2026-09-12 — Start bounded 1K completion experiment
+
+- D approved the next milestone. New prospective plan and unchanged engine
+  retention criteria: rust-star/.work/bounded-1k-34eabe66/plan.json and
+  engine-plan.json. Finish this milestone and stop with the next milestone.
+- Candidate is the preserved rejected 1K source plus one native-1K-guarded
+  checked completion wait after nonfinal tiles. Final wait/error audit stays
+  unchanged. No shader, arithmetic, buffer alias, fixture or oracle change.
+- Freeze both uninstrumented and observed builds after host/router/ring and
+  ownership proofs. Require 12K internal, normal/profiled 32K/128 full C0,
+  strict profile coverage and a separate full-C0 lifetime bound. Only then run
+  two warmups and five AB/BA/AB/BA/AB engine pairs with unchanged gates,
+  including paired median footprint <=1.15. Preserve every attempt and restore
+  accepted runtime on failure. No publication or 256K work.
+
 ## 2026-09-12 — Complete bootstrap lifetime diagnostic; retain accepted runtime
 
 - Both optimized instrumented Rust 1.74 builds and the synthetic weak-ownership
@@ -5373,9 +5426,9 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-12)
 
-- COMPLETED SINGLE MILESTONE: bootstrap lifetime diagnostic passes full C0,
-  source reconstruction and corrected trace audit. Accepted runtime is unchanged.
-  Report the outcome and proposed one-in-flight 1K experiment, then stop.
+- COMPLETED SINGLE MILESTONE: bounded 1K passes full C0 but fails the strict
+  scratch-lifetime prerequisite. No engine timing starts; accepted runtime is
+  restored. Report this negative result and explicit-reuse next milestone, then stop.
   Wide bootstrap c7adfb22 is rejected
   after all 12 engine runs and restored at 179e0c24. Verified report:
   rust-star/reports/wide-bootstrap-c7adfb22/README.md. Median prefill -1.127%,
@@ -5412,10 +5465,17 @@ Next:
   peak is 9.973 GB wide versus 11.181 GB accepted; this does not explain higher
   OS footprint. Preserve the original 32/64 expected-width audit failure and
   its single-field correction on unchanged runs. Runtime/source/default unchanged.
-- NEXT, NOT STARTED: test one unfinished eligible 1K bootstrap tile at a time
-  with a checked completion wait, fresh C0 and unchanged engine/memory gates.
-  No pooling or buffer aliasing is needed for that experiment. Stop for the
-  requested milestone update. Keep 256K paused and publication deferred.
+- COMPLETE, REJECTED: bounded 1K waits pass 50,031,360 exact FP32 comparisons,
+  12K internal checks and all profile/build/local proofs. Four snapshots at the
+  20K frontier violate scratch-release conditions despite completed prior GPU
+  work; 5 MiB of older buffers remains at the next registration/submission.
+  One unfinished command and 75% lower global logical peak do not override the
+  failed prerequisite. No engine runs; all accepted source/default restored.
+  Verified 116-artifact report: rust-star/reports/bounded-1k-34eabe66/README.md.
+- NEXT, NOT STARTED: explicit bounded scratch reuse with complete ownership/
+  first-write proofs and a new prospective identity/capacity contract, then
+  full C0 and unchanged engine/memory gates. Stop for the requested update.
+  Keep 256K paused and publication deferred.
 
 - COMPLETE: attention-output whole-engine milestone. Candidate 4ced6ee8 is
   retained. Report rust-star/reports/attention-output-engine-4ced6ee8/README.md.
@@ -6337,12 +6397,13 @@ Next:
 
 ## Immediate Next Actions
 
-1. The bootstrap lifetime milestone is complete. Preserve its verified report,
-   raw runs and original/corrected audit. No more runs belong to this plan.
-2. Report full C0, observed four-set overlap, the unresolved OS-footprint cause,
-   restored runtime and the concrete one-in-flight 1K next milestone.
-3. Stop after that update. The next implementation needs its own prospective
-   plan, source proof, full C0, diagnostic bound and whole-engine/memory gates.
+1. The bounded 1K milestone is closed and rejected at its lifetime prerequisite.
+   Preserve the verified report, all raw runs and the original failing audit.
+2. Report full C0, the completed-command scratch survivors, zero engine runs,
+   restored runtime and the explicit bounded-reuse next milestone.
+3. Stop after the update. A new pooling candidate needs its own prospective
+   ownership/capacity and first-write proofs, full C0 and engine/memory gates.
+   Do not relax this failed study's criteria or blindly repeat its runs.
 4. Keep oracle-v5 immutable, the interrupted 256K campaign paused and all
    publication boundaries unchanged.
 

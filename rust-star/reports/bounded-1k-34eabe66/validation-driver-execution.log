@@ -1,0 +1,9 @@
+START input-before 2026-09-12T13:54:12.398103+00:00
+PASS input-before
+START validation 2026-09-12T13:55:07.139521+00:00
+PASS validation
+START lifetime 2026-09-12T14:05:17.706500+00:00
+Traceback (most recent call last):
+  File "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/bounded-1k-34eabe66/execute-validation.py", line 8, in <module>
+    assert p.returncode==0,(name,p.returncode)
+AssertionError: ('lifetime', 1)

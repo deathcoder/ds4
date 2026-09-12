@@ -1,0 +1,10 @@
+{
+  "closed": true,
+  "utc": "2026-09-12T14:13:40.326725+00:00",
+  "retained": false,
+  "reason": "Failed the predeclared scratch-lifetime prerequisite despite full C0 and at-most-one unfinished command. Engine study did not start; restore accepted runtime without relaxing gates.",
+  "engine_runs": 0,
+  "full_fp32_words": 50031360,
+  "inference_repeats": 0,
+  "stop_after_milestone": true
+}

@@ -585,9 +585,20 @@ lower than the accepted 64-row path's 11.181 GB, so logical scratch lifetime
 alone does not explain the higher OS footprint. The original auditor's mistaken
 32-row expectation and its source-backed 64-row correction are preserved; no
 inference repeats. All 42 accepted sources and the default executable remain
-unchanged. Next, under a new plan, test a completion wait per eligible 1K tile
-with fresh full C0 and unchanged whole-engine/memory gates. No optimization from
-this diagnostic is retained, and no specific memory-growth cause is proved.
+unchanged. No optimization from this diagnostic is retained, and no specific
+memory-growth cause is proved.
+
+The subsequent checked-wait candidate passes the 12K internal check and three
+fresh 32K/128 full-C0 runs (50,031,360 exact FP32 words), but fails its prospective
+scratch-lifetime prerequisite. At the 20K frontier, completed-tile buffers survive
+the local pool drain; 5 MiB remains at the next registration/submission. One
+unfinished command and a 75% lower sampled logical peak do not override that
+failure. No engine timing starts; all accepted source/default state is restored.
+`rust-star/reports/bounded-1k-34eabe66/README.md` verifies 116 artifacts and
+reproduces the failed assertion. Next investigate explicit bounded scratch reuse
+with ownership/first-write proofs, a new prospective identity/capacity contract,
+fresh full C0 and unchanged engine/memory gates. Immediate object destruction
+must not be inferred from command completion alone.
 
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-09, native prefill through all 43 layers
