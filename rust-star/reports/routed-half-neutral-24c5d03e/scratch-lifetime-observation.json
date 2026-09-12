@@ -1,0 +1,40 @@
+{
+  "schema": "rust-star-routed-half-scratch-observation-v1",
+  "utc": "2026-09-12T06:13:51.987697+00:00",
+  "source_commit": "c7adfb22706d5a5883d8a251a3a9046a2c8e587b",
+  "tail_sha256": "b2a3d081257fd7af179e1232ce782851bc876afe1d15295512059518090987e8",
+  "tail_byte_identical_to_accepted_4ced6ee8": true,
+  "uses": [
+    {
+      "line": 46883,
+      "text": "id<MTLBuffer> heads_half_buffer = native_attention_half"
+    },
+    {
+      "line": 46889,
+      "text": "if (native_attention_half && (!heads_half_buffer || !low_half_buffer))"
+    },
+    {
+      "line": 47158,
+      "text": "[encoder setBuffer:heads_half_buffer offset:0 atIndex:2];"
+    },
+    {
+      "line": 47177,
+      "text": "[encoder setBuffer:native_attention_half ? heads_half_buffer : heads_buffer"
+    }
+  ],
+  "last_named_use_before_routed_map": true,
+  "unique_cache_key": true,
+  "prospective_scope": "Use precisely native_attention_half, not the broader native_chunk predicate.",
+  "rows": 4096,
+  "existing_capacity_bytes": 268435456,
+  "required_conversion_bytes": 33554432,
+  "prospective_extra_allocation_bytes": 0,
+  "validation_remaining": [
+    "Add explicit buffer.length capacity check if integrated",
+    "Place conversion after profile boundary 4 so gate/up interval includes its cost",
+    "Keep shared FFN float input intact",
+    "Verify actual dispatch accounting and all non-native branches",
+    "Run full-model C0 and unprofiled engine block after local selection"
+  ],
+  "status": "Source-only ownership observation; no runtime implementation or performance claim."
+}

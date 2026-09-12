@@ -548,6 +548,13 @@ native build, 94 Python tests and the synthetic five-word artifact check pass.
 and a complete source-inverse verifier. This is local compiler compatibility;
 no new full-model, performance, Linux execution or remote CI claim follows.
 
+The following routed-input half screen passes synthetic exactness but fails
+A/A neutrality in five of six cells. Both sessions and all 72 pairs are kept;
+candidate timing never runs and runtime source stays at `24c5d03e`. Report
+`rust-star/reports/routed-half-neutral-24c5d03e/README.md` verifies the full
+kernel inverse and every raw control. Establish a fresh bounded timing protocol
+before drawing any candidate speed conclusion; no engine gain is established.
+
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-09, native prefill through all 43 layers
 and the output head is C0 exact at 128K, with 128 exact full-logit decode steps

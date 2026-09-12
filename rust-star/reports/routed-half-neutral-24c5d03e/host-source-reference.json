@@ -1,0 +1,6 @@
+{
+  "report": "../wide-bootstrap-c7adfb22",
+  "manifest_sha256": "03b33f11c65ccd6fb68c38c45a077946ec777906f5eaf86d4aaf9c520346c79d",
+  "preparation": "candidate-sources/rust-star/runtime/src/metal_shim.m",
+  "execution": "baseline-sources/rust-star/runtime/src/metal_shim.m"
+}

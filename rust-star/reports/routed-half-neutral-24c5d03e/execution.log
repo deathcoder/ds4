@@ -1,0 +1,7 @@
+START edges 0 2026-09-12T06:42:51.052073+00:00
+PASS edges 0
+START aa-only 0 2026-09-12T06:43:41.411954+00:00
+PASS aa-only 0
+START aa-only 1 2026-09-12T06:44:48.806952+00:00
+PASS aa-only 1
+STOP: neutral screen failed aa-only

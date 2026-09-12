@@ -1,0 +1,6 @@
+{
+  "original_path": "rust-star/.work/attention-output-milestone-08ebd1aa/audit.py",
+  "original_sha256": "23b824818eb59ec1961c8ecccdc3a0bdc641a5cbaafa628ba59caefbe4813402",
+  "derived_sha256": "cea4a6baf74c645b2deb3bb5c8d3122eb5f742c2747a7e04ffd325d8bdee0381",
+  "description": "Retain raw command/role/order/arena/neutral checks; adapt shape and all output words to routed FP16, bind stable cross-session/cross-mode reference checksums, and use the new prospectively declared candidate gates."
+}

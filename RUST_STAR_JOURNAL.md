@@ -18,6 +18,48 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-12 — Close routed-input screen after failed A/A neutrality
+
+- Edge checks pass all 16 cases and 64,536,576 FP16 words. Both predetermined
+  A/A sessions complete with all 72 pairs and 7,851,737,088 further words.
+  Total comparisons are 7,916,273,664; 668,516,352 directly compare candidate
+  and original outputs in edges/full-case warm-ups, with the rest A/A checks.
+- Five of six neutral cells fail the fixed variability/order/arena criteria.
+  The runner stops before candidate timing; no kernel speed conclusion or
+  runtime integration is allowed. This is a failed measurement protocol, not
+  evidence that the kernel itself is slower. All attempts/samples are retained.
+- Raw three-sample slots contain occasional duration ratios up to 1.457587.
+  This motivates a separate prospective test of eight conditioning chains and
+  twelve measured chains per role, using their median as the slot estimate.
+  Keep the same neutral/candidate thresholds and require fresh A/A success;
+  do not relabel the existing failed data with a different statistic.
+- Portable report rust-star/reports/routed-half-neutral-24c5d03e/README.md
+  verifies all 67 artifacts, the complete kernel/assembly/ABI/host proofs and
+  all raw edge/A/A audits. Every one of the 42 runtime source hashes still
+  matches the accepted compatibility source at 24c5d03e. No GPU work is active.
+- Commit the closed screen locally, then freeze and execute the new protocol
+  as a separate attempt. No candidate speed, full-model, DwarfStar or frontier
+  claim follows; the interrupted 256K campaign remains paused. No push.
+
+## 2026-09-12 — Start the routed-input half local screen
+
+- Compatibility closure is committed at
+  24c5d03e1a5e4d6c732a7380f5bbd6acaa83f96f; its completion record pins the
+  report, verifier, source and retained performance executable. No push.
+- Started .work/routed-half-prefill-c7adfb22/run.py, exec session 24784.
+  Clang host harness build passes; edge session 0 began 06:42:51 UTC. The
+  actual original and candidate Metal kernels compile inside this process.
+  Read active-run.json, execution.log, phase statuses and failure.json before
+  any additional GPU or heavy compilation work.
+- This standalone experiment leaves the runtime unchanged at 24c5d03e. Source
+  parts, full inverse, exact production arguments/encoding and frozen scripts
+  are pinned. Edge checks precede both predeclared A/A sessions; mixed timing
+  only follows passing neutral controls. Preserve any execution/exactness or
+  statistical failure without retuning the gates or adding discretionary runs.
+- The next decision is local selection, not an engine gain. If selected, freeze
+  a separate accepted-baseline integration/full-C0/whole-engine plan before
+  changing runtime code. If rejected, close the hypothesis and continue.
+
 ## 2026-09-12 — Complete Rust 1.74 compatibility and return to performance work
 
 - Corrected source passes pinned Rust 1.74 formatting, all 320 host tests,
@@ -5077,12 +5119,17 @@ Next:
   the accepted performance executable remain unchanged. All 320 Rust/94 Python
   tests, optimized build, formatting and synthetic artifact checks pass. Report:
   rust-star/reports/msrv-174-179e0c24/README.md (50 artifacts, full source inverse).
-- NEXT: .work/routed-half-prefill-c7adfb22/run.py, prepared and not yet executed.
-  It freezes the current accepted host source and actual production kernel
-  fragments. Strict edge/A/A/mixed gates must pass before any runtime integration.
-  A new full-C0 and whole-engine plan is required after local selection.
-  No GPU work is active. No fresh DwarfStar/model/frontier claim; 256K stays
-  paused. Remote CI remains unverified; do not push or dispatch a workflow.
+- COMPLETE: routed-half local screen stops after five of six A/A cells fail.
+  Runtime unchanged at 24c5d03e; all 16 edge cases and 72 A/A pairs complete.
+  Report rust-star/reports/routed-half-neutral-24c5d03e/README.md verifies 67
+  artifacts and 7,916,273,664 FP16 comparisons (includes A/A). Candidate timing
+  never ran. Do not make a kernel speed claim from this failed control screen.
+- NEXT: a new prospective protocol with 8 conditioning/12 measured complete
+  chains and median slot estimates, preserving the same neutral and candidate
+  criteria. Fresh A/A must pass before candidate timing. No GPU work is active;
+  never rerun or reclassify the previous failed data to satisfy a threshold.
+  Full-model C0 and whole-engine evidence remain required after local selection.
+  Keep 256K paused, the oracle immutable and publication deferred.
 
 - COMPLETE: attention-output whole-engine milestone. Candidate 4ced6ee8 is
   retained. Report rust-star/reports/attention-output-engine-4ced6ee8/README.md.
@@ -6004,20 +6051,18 @@ Next:
 
 ## Immediate Next Actions
 
-1. Commit the verified Rust 1.74 compatibility milestone and record its local
-   closure. Preserve both compiler failures and the previous wide-bootstrap
-   rejection report. No model/GPU validation is running.
-2. Run rust-star/.work/routed-half-prefill-c7adfb22/run.py. Its complete-kernel
-   inverse, production arguments, scratch lifetime observation, edge cases,
-   two-session neutral/mixed design and selection thresholds are prepared.
-   Check active-run.json/execution.log before any concurrent work. Do not alter
-   frozen sources or integrate a candidate that fails exactness or selection.
+1. Commit the verified failed routed-half neutral screen and record closure.
+   No GPU work remains; runtime source is unchanged at 24c5d03e. Preserve all
+   existing raw data and its original mean-of-three decision.
+2. Freeze a new bounded protocol: 8 conditioning and 12 measured chains per
+   role, median estimate, the same exact edge/control cases and unchanged
+   neutral/candidate thresholds. Run fresh edges and both A/A sessions before
+   any candidate comparison. Preserve failures and do not add discretionary runs.
 3. If selected, freeze a separate current-baseline integration/full-C0/engine
-   plan. Preserve every failed attempt and all scheduled pairs. Otherwise close
-   the hypothesis and continue to the next justified lower-context milestone.
-4. Continue toward the remaining initial-scope requirements without stopping at
-   an individual result. Keep the oracle and no-publication boundary intact;
-   do not automatically resume the interrupted 256K campaign.
+   plan. Otherwise close the hypothesis and continue justified work. Do not
+   infer an engine improvement from local kernels or synthetic outputs.
+4. Continue the charter's remaining initial scope milestone by milestone;
+   keep no-publication, immutable-oracle and paused-256K boundaries intact.
 
 ## Entries
 

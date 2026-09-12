@@ -1,0 +1,54 @@
+{
+  "interpretation": "Exploratory diagnosis of identical-kernel timing variability; no exclusions, changed gates or candidate performance inference.",
+  "statistics": [
+    {
+      "session": 0,
+      "case": 0,
+      "slots": 24,
+      "median_triplet_cv": 0.009558576647323985,
+      "maximum_triplet_cv": 0.1387430501665128,
+      "maximum_triplet_duration_ratio": 1.3296881796903632
+    },
+    {
+      "session": 0,
+      "case": 1,
+      "slots": 24,
+      "median_triplet_cv": 0.006469600780206052,
+      "maximum_triplet_cv": 0.09384053167305605,
+      "maximum_triplet_duration_ratio": 1.2172991030852836
+    },
+    {
+      "session": 0,
+      "case": 2,
+      "slots": 24,
+      "median_triplet_cv": 0.008752742368698545,
+      "maximum_triplet_cv": 0.11351801562652769,
+      "maximum_triplet_duration_ratio": 1.2674514815953524
+    },
+    {
+      "session": 1,
+      "case": 0,
+      "slots": 24,
+      "median_triplet_cv": 0.005420086274465763,
+      "maximum_triplet_cv": 0.07082596079674763,
+      "maximum_triplet_duration_ratio": 1.1644711160279422
+    },
+    {
+      "session": 1,
+      "case": 1,
+      "slots": 24,
+      "median_triplet_cv": 0.00989455562135208,
+      "maximum_triplet_cv": 0.18683056481838056,
+      "maximum_triplet_duration_ratio": 1.4575865544871864
+    },
+    {
+      "session": 1,
+      "case": 2,
+      "slots": 24,
+      "median_triplet_cv": 0.010507607367358607,
+      "maximum_triplet_cv": 0.10274879283300539,
+      "maximum_triplet_duration_ratio": 1.2412167272147374
+    }
+  ],
+  "next_hypothesis": "Prospectively test longer conditioning and a longer median-based sampling window, retaining the same neutral/candidate thresholds. Do not reclassify this failed screen."
+}

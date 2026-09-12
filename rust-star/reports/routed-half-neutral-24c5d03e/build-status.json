@@ -1,0 +1,16 @@
+{
+  "command": [
+    "clang",
+    "-O2",
+    "-fobjc-arc",
+    "-framework",
+    "Foundation",
+    "-framework",
+    "Metal",
+    "$WORK/probe.m",
+    "-o",
+    "$WORK/probe"
+  ],
+  "exit_code": 0,
+  "utc": "2026-09-12T06:42:49.390886+00:00"
+}

@@ -1,0 +1,17 @@
+[
+  {
+    "before": "rust_star_routed_prefill_gate_up",
+    "after": "probe_routed_half_gate_up",
+    "count": 6
+  },
+  {
+    "before": "    device const float * y = (device const float *)(src1",
+    "after": "    device const half * y = (device const half *)(src1",
+    "count": 1
+  },
+  {
+    "before": "                (half2x4)(*((device float2x4 *) y));",
+    "after": "                *((device half2x4 *) y);",
+    "count": 1
+  }
+]

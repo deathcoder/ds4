@@ -1,0 +1,127 @@
+{
+  "passed": true,
+  "cases": [
+    {
+      "case": 0,
+      "rows": 1,
+      "pattern": 0,
+      "input_fnv1a_u32": 16639509233312140720,
+      "output_fnv1a_u16": 11432923838629221819
+    },
+    {
+      "case": 1,
+      "rows": 1,
+      "pattern": 1,
+      "input_fnv1a_u32": 13978556574635583240,
+      "output_fnv1a_u16": 2912183871608723067
+    },
+    {
+      "case": 2,
+      "rows": 31,
+      "pattern": 0,
+      "input_fnv1a_u32": 15975010529576628694,
+      "output_fnv1a_u16": 7360687632889400844
+    },
+    {
+      "case": 3,
+      "rows": 31,
+      "pattern": 1,
+      "input_fnv1a_u32": 18194397794087000620,
+      "output_fnv1a_u16": 1487428242650449299
+    },
+    {
+      "case": 4,
+      "rows": 32,
+      "pattern": 0,
+      "input_fnv1a_u32": 1159947140580006769,
+      "output_fnv1a_u16": 8791363633686561448
+    },
+    {
+      "case": 5,
+      "rows": 32,
+      "pattern": 1,
+      "input_fnv1a_u32": 2591589933301320970,
+      "output_fnv1a_u16": 18373199788559202458
+    },
+    {
+      "case": 6,
+      "rows": 33,
+      "pattern": 0,
+      "input_fnv1a_u32": 12879717071663076492,
+      "output_fnv1a_u16": 9213889083287192277
+    },
+    {
+      "case": 7,
+      "rows": 33,
+      "pattern": 1,
+      "input_fnv1a_u32": 14304427617347714784,
+      "output_fnv1a_u16": 1559232019288848338
+    },
+    {
+      "case": 8,
+      "rows": 63,
+      "pattern": 0,
+      "input_fnv1a_u32": 17046147234145373139,
+      "output_fnv1a_u16": 6675231173480495634
+    },
+    {
+      "case": 9,
+      "rows": 63,
+      "pattern": 1,
+      "input_fnv1a_u32": 16847747823207519807,
+      "output_fnv1a_u16": 5496811153610505292
+    },
+    {
+      "case": 10,
+      "rows": 64,
+      "pattern": 0,
+      "input_fnv1a_u32": 10553550389031494500,
+      "output_fnv1a_u16": 16114974346632421485
+    },
+    {
+      "case": 11,
+      "rows": 64,
+      "pattern": 1,
+      "input_fnv1a_u32": 7211406587840684802,
+      "output_fnv1a_u16": 10944935002821576569
+    },
+    {
+      "case": 12,
+      "rows": 65,
+      "pattern": 0,
+      "input_fnv1a_u32": 14472670085940718375,
+      "output_fnv1a_u16": 4534508012323316614
+    },
+    {
+      "case": 13,
+      "rows": 65,
+      "pattern": 1,
+      "input_fnv1a_u32": 15471839143664059005,
+      "output_fnv1a_u16": 14535314032108875874
+    },
+    {
+      "case": 14,
+      "rows": 1024,
+      "pattern": 0,
+      "input_fnv1a_u32": 1825845872672388162,
+      "output_fnv1a_u16": 15661717504011549536
+    },
+    {
+      "case": 15,
+      "rows": 1024,
+      "pattern": 1,
+      "input_fnv1a_u32": 10858321254329538350,
+      "output_fnv1a_u16": 7251263956870349057
+    }
+  ],
+  "fp16_words_compared": 64536576,
+  "all_guards_cpu_maps_and_half_conversions_exact": true,
+  "files": {
+    "edges/probe.jsonl": "3630e6ce46194a27295e8c07ceddb1da69dadaff11e6260a88fa828eed99d76b",
+    "edges/status.json": "83059a1321ab9c3779df0551013a7132422d2fe7858eac91c6ac1425ed26d384",
+    "plan.json": "bdc66c0ff5819f766c334cb0eb24e7a6304df5d1cf0ae5792bdca0400f189e9c",
+    "probe.m": "134cfc214fb767c0cf429b91636f6c679a62a1d0489f5ed3edf0b0063be951e9",
+    "candidate.metal": "11efdf88adca3641f84f7b545a571d396c7c9fbfd8cc356ae5ed56117ce3928b",
+    "combined.metal": "2faa0a426c326869029df11f6ca582766a114d632d6ab4688f00f28459693aa1"
+  }
+}
