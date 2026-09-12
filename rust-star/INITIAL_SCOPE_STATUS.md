@@ -22,7 +22,7 @@ are not silently added to the initial executable scope. Any unresolved initial
 requirement must remain visible; research goals without a finite acceptance
 condition must not be declared complete by inventing one.
 
-The current instruction is to continue from one complete milestone to the next.
-A rejected candidate closes its hypothesis and restores the accepted path; it
-is not a reason to stop useful project work. The active journal and frozen work
-plans identify the exact next action and any running process.
+The user ended continuous token-burn execution on 2026-09-12. The current Rust
+1.74 full-C0/profile milestone is complete; report its outcome and the next
+milestone, then stop. The separate 1K bootstrap plan is prepared but no runtime
+edits or build have started. Resume from the journal when work is requested.

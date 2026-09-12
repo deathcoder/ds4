@@ -18,6 +18,23 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-12 — Return to milestone-by-milestone updates
+
+- User ended token-burn mode and requested finishing the current milestone,
+  then reporting its outcome and the next milestone. The current Rust 1.74
+  full-C0/profile milestone had just closed at e73a4b79535d11306e9be7ada4f00d8e72da5950.
+- Stop at that completed checkpoint. No GPU work remains. All 42 accepted
+  runtime source hashes still match its completion record.
+- The separate 1K bootstrap experiment is prepared at
+  .work/bootstrap-1k-current/, but prepare-source/build have NOT run: no
+  pre-edit-freeze.json, source-edits.json or candidate-build.json exists there.
+  Its plan currently pins e73a4b79; before a future start, reconcile that pin
+  with any subsequent documentation-only commits without changing the accepted
+  source, executable or prospective criteria. Freeze the final scripts first.
+- Next milestone to report: bounded 1K bootstrap batches with source/router/ring,
+  internal/full-C0, diagnostic and whole-engine/RSS/footprint gates. Do not start
+  it automatically from the prior continuous-execution instruction.
+
 ## 2026-09-12 — Current Rust 1.74 full C0 and profile complete
 
 - Both fresh 32K/128 processes pass all 33,354,240 FP32 comparisons against
@@ -5206,7 +5223,8 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-12)
 
-- ACTIVE: autonomous milestone sequence. Wide bootstrap c7adfb22 is rejected
+- PAUSED AT COMPLETED MILESTONE: user ended continuous execution.
+  Wide bootstrap c7adfb22 is rejected
   after all 12 engine runs and restored at 179e0c24. Verified report:
   rust-star/reports/wide-bootstrap-c7adfb22/README.md. Median prefill -1.127%,
   but two slower pairs and a failed order gate; memory footprint +52.484%.
