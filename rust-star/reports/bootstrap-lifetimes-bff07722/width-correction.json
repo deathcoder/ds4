@@ -1,0 +1,12 @@
+{
+  "utc": "2026-09-12T13:27:51.497411+00:00",
+  "reason": "Initial plan/auditor confused diagnostic32 with production64. Pinned accepted source explicitly selects PRODUCTION_TILE_ROWS=64 when collect_outputs=false; no executable/source/schedule/input or inference sequence changed.",
+  "source": "accepted-metal.rs",
+  "source_sha256": "6b3b4b579bded71a044f2270d06fc0a00aef805791b427fc36cbb6bdcddb9088",
+  "source_evidence": "const DIAGNOSTIC_TILE_ROWS: usize = 32; const PRODUCTION_TILE_ROWS: usize = 64; collect_outputs=false selects production.",
+  "before": "[('accepted',32),('wide',1024)]",
+  "after": "[('accepted',64),('wide',1024)]",
+  "original_auditor_sha256": "3cda636aeabaf802fc3abe339f659fc749471b667bbefa4458a4eaed5fdf87b7",
+  "corrected_auditor_sha256": "5d64cd1533d2c702fbbaf6c1a3a1bc138212855719a9255a61da3ddebf11ff55",
+  "scope": "Expected trace coverage only: 448 accepted native tiles and1799 snapshots. Original auditor remains frozen and will be executed by original runner; retain its expected failure. Corrected auditor reuses same two raw runs with no repeats, exclusions or numerical/performance gate changes."
+}

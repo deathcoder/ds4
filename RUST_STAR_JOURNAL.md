@@ -18,6 +18,65 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-12 — Complete bootstrap lifetime diagnostic; retain accepted runtime
+
+- Both optimized instrumented Rust 1.74 builds and the synthetic weak-ownership
+  proof pass. Accepted 64-row and rejected 1K paths each pass fresh 32K/128 full
+  C0: 33,354,240 exact FP32 words total. Full model/oracle/prompt/7,669-fixture
+  hashes pass before and after. GPU and runner sessions are complete and drained.
+- Complete coverage: 448/28 native tiles, 1,799/119 snapshots, seven chunks each.
+  The 1K path overlaps four scratch sets; at 32K each is 2,493,173,233 bytes,
+  totaling 9,972,692,932 logical bytes. Accepted path peak is 11,180,845,923 bytes.
+  At every final wait, earlier scratch is gone despite retained completed command
+  objects; every final pool drain leaves zero tracked scratch in both paths.
+- Logical live lengths are not OS footprint. Instrumented whole-process peak
+  footprint is 12,346,315,792/15,423,263,784 bytes accepted/1K. Neither these
+  perturbed processes nor their sampled counters explain the earlier 44.722%
+  engine footprint regression. No new timing, retention or DwarfStar claim.
+- Original frozen audit fails its documented 32-row coverage assumption after
+  both C0 runs and final hashes pass. Preserve that failure. The correction was
+  frozen during the accepted run; audit-v2 changes only the expected width to
+  the source-pinned 64 rows and passes without repeating inference.
+- Verified portable report: rust-star/reports/bootstrap-lifetimes-bff07722/README.md.
+  First verifier passes 60 artifacts, exact source reconstruction, raw-trace/C0
+  accounting and three malformed-trace rejection cases. Verification output:
+  rust-star/.work/bootstrap-lifetimes-bff07722/verify-execution.log. No verifier
+  failure or retry. All 42 accepted source hashes and default 2bf77edb executable
+  remain unchanged. Diagnostic binaries are isolated; no production edit retained.
+- Next milestone, NOT STARTED: test a checked completion wait after each nonfinal
+  eligible 1K tile, bounding unfinished bootstrap work to one tile without new
+  buffer aliases. Concrete design is in the report. Require fresh full C0,
+  separate lifetime-bound proof and fixed uninstrumented engine/memory gates,
+  including unchanged footprint ratio <=1.15. Commit/report this milestone and
+  STOP. Keep 256K paused and publication deferred.
+
+## 2026-09-12 — Correct lifetime-plan baseline width, preserve original audit
+
+- During the first diagnostic run, raw rows and pinned accepted-metal.rs show
+  production tiles are64 rows;32 rows applies to collect_outputs diagnostics.
+  The plan/auditor description was wrong. The frozen accepted executable,
+  source, requested output-only path and model inputs are correct and unchanged.
+- Preserve plan.json/audit.py and their expected coverage failure. New
+  width-correction.json freezes audit-v2.py with the single32-to64 expected-width
+  change before the wide run. Reuse the same two raw runs, with no new inference,
+  exclusions, changed C0 criteria or performance claims. Expected accepted
+  coverage is448 native tiles/1799 snapshots across seven chunks.
+
+## 2026-09-12 — Start bounded bootstrap lifetime diagnostic
+
+- D approved the next milestone. Keep one-milestone mode: measure and report,
+  then stop before implementation of any resulting production optimization.
+- New prospective plan: rust-star/.work/bootstrap-lifetimes-bff07722/plan.json.
+  One accepted32-row and one rejected1K fresh32K/128 full-C0 diagnostic run.
+  Identical weak-reference instrumentation enumerates121 local buffer names,
+  separates16 persistent aliases, and samples command status, logical live
+  lengths, device allocations and OS footprint. Prove observer ownership with
+  synthetic allocations before model runs; preserve all attempts and failures.
+- These runs are perturbed lifetime observations, not a new performance study.
+  No scratch reuse is presumed safe. Derive a concrete bounded policy from the
+  result, archive source inverse and raw evidence, restore all42 accepted source
+  hashes, and stop. No default change, publication or256K work is authorized here.
+
 ## 2026-09-12 — Close 1K bootstrap: faster prefill, rejected memory footprint
 
 - All 12 engine processes (two excluded warmups and five measured pairs)
@@ -5314,8 +5373,9 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-12)
 
-- COMPLETED SINGLE MILESTONE: 1K bootstrap is rejected and accepted source
-  restored. Report the outcome and next milestone, then stop.
+- COMPLETED SINGLE MILESTONE: bootstrap lifetime diagnostic passes full C0,
+  source reconstruction and corrected trace audit. Accepted runtime is unchanged.
+  Report the outcome and proposed one-in-flight 1K experiment, then stop.
   Wide bootstrap c7adfb22 is rejected
   after all 12 engine runs and restored at 179e0c24. Verified report:
   rust-star/reports/wide-bootstrap-c7adfb22/README.md. Median prefill -1.127%,
@@ -5345,9 +5405,16 @@ Next:
   rejected; all 42 accepted sources and the default executable are restored/
   unchanged. Verified 178-artifact report:
   rust-star/reports/bootstrap-1k-d72b7528/README.md. No GPU workload active.
-- NEXT, NOT STARTED: measure bootstrap scratch allocation/command lifetimes
-  before another batching or reuse change. The source suggests a bounded
-  investigation; it does not prove the memory-growth cause. Stop for the
+- COMPLETE: bootstrap lifetime diagnostic. 60-artifact verified report:
+  rust-star/reports/bootstrap-lifetimes-bff07722/README.md. Both fresh C0 runs
+  pass 33,354,240 exact FP32 comparisons. Four 1K scratch sets overlap; earlier
+  sets vanish after completion, then the final set after pool drain. Logical
+  peak is 9.973 GB wide versus 11.181 GB accepted; this does not explain higher
+  OS footprint. Preserve the original 32/64 expected-width audit failure and
+  its single-field correction on unchanged runs. Runtime/source/default unchanged.
+- NEXT, NOT STARTED: test one unfinished eligible 1K bootstrap tile at a time
+  with a checked completion wait, fresh C0 and unchanged engine/memory gates.
+  No pooling or buffer aliasing is needed for that experiment. Stop for the
   requested milestone update. Keep 256K paused and publication deferred.
 
 - COMPLETE: attention-output whole-engine milestone. Candidate 4ced6ee8 is
@@ -6270,12 +6337,12 @@ Next:
 
 ## Immediate Next Actions
 
-1. The bounded 1K milestone is complete and rejected on footprint. Review the
-   verified report and preserve all evidence; no more runs belong to this plan.
-2. Report the measured latency gain, failed memory gate and completed source
-   restoration, with scratch-lifetime measurement as the next milestone.
-3. Stop after that update. Any future implementation requires a separate plan,
-   dependency/ownership proof, fresh full C0 and whole-engine/memory criteria.
+1. The bootstrap lifetime milestone is complete. Preserve its verified report,
+   raw runs and original/corrected audit. No more runs belong to this plan.
+2. Report full C0, observed four-set overlap, the unresolved OS-footprint cause,
+   restored runtime and the concrete one-in-flight 1K next milestone.
+3. Stop after that update. The next implementation needs its own prospective
+   plan, source proof, full C0, diagnostic bound and whole-engine/memory gates.
 4. Keep oracle-v5 immutable, the interrupted 256K campaign paused and all
    publication boundaries unchanged.
 

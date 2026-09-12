@@ -1,0 +1,16 @@
+Full input hashes, GPU idle
+START accepted 91715 2026-09-12T13:24:39.693674+00:00
+PASS full C0 accepted
+START wide 92366 2026-09-12T13:29:02.830933+00:00
+PASS full C0 wide
+Full input hashes, GPU idle
+Traceback (most recent call last):
+  File "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/bootstrap-lifetimes-bff07722/audit.py", line 7, in <module>
+    positions=list(range(4096,32768,width));phases=['entry','registered','submitted','after_pool'];keys={(p,phase) for p in positions for phase in phases}|{(p,'waited') for p in positions if (p+width)%4096==0};assert set(by)==keys,(role,len(by),len(keys),list(set(by)^keys)[:5])
+AssertionError: ('accepted', 1799, 3591, [(11232, 'registered'), (25696, 'entry'), (26528, 'after_pool'), (19232, 'after_pool'), (18272, 'entry')])
+Traceback (most recent call last):
+  File "/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/bootstrap-lifetimes-bff07722/run.py", line 52, in <module>
+    subprocess.run([sys.executable,str(w/'audit.py')],cwd=r,check=True)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/subprocess.py", line 528, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/Applications/Xcode.app/Contents/Developer/usr/bin/python3', '/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/bootstrap-lifetimes-bff07722/audit.py']' returned non-zero exit status 1.

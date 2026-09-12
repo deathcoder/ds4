@@ -1,0 +1,8 @@
+{
+  "passed": true,
+  "exit_code": 0,
+  "log_sha256": "9ada7cb44ba25794dba5a2a5a53ab0c6d7f08e019d2f8060eb21335ccd7adf51",
+  "auditor_sha256": "5d64cd1533d2c702fbbaf6c1a3a1bc138212855719a9255a61da3ddebf11ff55",
+  "original_audit_failure_preserved": true,
+  "inference_repeats": 0
+}

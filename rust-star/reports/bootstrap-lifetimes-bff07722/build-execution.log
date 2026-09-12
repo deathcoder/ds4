@@ -1,0 +1,9 @@
+START observer-build
+PASS observer-build
+START observer-proof
+PASS observer-proof
+START accepted-release-build
+PASS accepted-release-build
+START wide-release-build
+PASS wide-release-build
+Accepted runtime source restored

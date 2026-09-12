@@ -576,7 +576,18 @@ passing. Separate peak memory footprint rises 44.722%, failing the predeclared
 15% allowance. Reject it and restore every accepted source hash and the unchanged
 default executable. Report `rust-star/reports/bootstrap-1k-d72b7528/README.md`
 verifies 178 artifacts and every gate. Scratch allocation/command lifetime
-measurement is a proposed next milestone; no specific memory cause is proved.
+measurement subsequently completes in
+`rust-star/reports/bootstrap-lifetimes-bff07722/README.md`: both instrumented
+32K/128 runs preserve 33,354,240 exact FP32 words. The 1K path overlaps four
+scratch sets totaling 9.973 GB at 32K; earlier sets disappear after completion,
+then the final set after the function pool drains. Its sampled logical peak is
+lower than the accepted 64-row path's 11.181 GB, so logical scratch lifetime
+alone does not explain the higher OS footprint. The original auditor's mistaken
+32-row expectation and its source-backed 64-row correction are preserved; no
+inference repeats. All 42 accepted sources and the default executable remain
+unchanged. Next, under a new plan, test a completion wait per eligible 1K tile
+with fresh full C0 and unchanged whole-engine/memory gates. No optimization from
+this diagnostic is retained, and no specific memory-growth cause is proved.
 
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-09, native prefill through all 43 layers

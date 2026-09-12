@@ -1,0 +1,80 @@
+{
+  "passed": true,
+  "roles": {
+    "accepted": {
+      "scratch_names_seen_every_registered_snapshot": 105,
+      "one_set_per_frontier": [
+        {
+          "frontier": 8192,
+          "one_set_bytes": 165751825
+        },
+        {
+          "frontier": 12288,
+          "one_set_bytes": 174665233
+        },
+        {
+          "frontier": 16384,
+          "one_set_bytes": 183578641
+        },
+        {
+          "frontier": 20480,
+          "one_set_bytes": 192492049
+        },
+        {
+          "frontier": 24576,
+          "one_set_bytes": 201405457
+        },
+        {
+          "frontier": 28672,
+          "one_set_bytes": 210318865
+        },
+        {
+          "frontier": 32768,
+          "one_set_bytes": 219232273
+        }
+      ],
+      "whole_process_peak_footprint_bytes": 12346315792,
+      "whole_process_peak_rss_bytes": 3337814016,
+      "previous_scratch_zero_after_all_chunk_waits": true,
+      "all_chunk_pools_leave_zero_scratch": true
+    },
+    "wide": {
+      "scratch_names_seen_every_registered_snapshot": 105,
+      "one_set_per_frontier": [
+        {
+          "frontier": 8192,
+          "one_set_bytes": 2392460785
+        },
+        {
+          "frontier": 12288,
+          "one_set_bytes": 2409246193
+        },
+        {
+          "frontier": 16384,
+          "one_set_bytes": 2426031601
+        },
+        {
+          "frontier": 20480,
+          "one_set_bytes": 2442817009
+        },
+        {
+          "frontier": 24576,
+          "one_set_bytes": 2459602417
+        },
+        {
+          "frontier": 28672,
+          "one_set_bytes": 2476387825
+        },
+        {
+          "frontier": 32768,
+          "one_set_bytes": 2493173233
+        }
+      ],
+      "whole_process_peak_footprint_bytes": 15423263784,
+      "whole_process_peak_rss_bytes": 3315580928,
+      "previous_scratch_zero_after_all_chunk_waits": true,
+      "all_chunk_pools_leave_zero_scratch": true
+    }
+  },
+  "limitations": "Logical lengths and device allocation counters differ from resident pages and OS footprint. Snapshot enumeration and command-status sampling are not atomic. Two diagnostic processes are not a paired performance study."
+}

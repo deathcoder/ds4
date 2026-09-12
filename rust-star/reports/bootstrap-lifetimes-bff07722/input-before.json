@@ -1,0 +1,18 @@
+{
+  "passed": true,
+  "utc": "2026-09-12T13:23:47.078243+00:00",
+  "model_stat": {
+    "size": 86720111488,
+    "mtime_ns": 1785574798142694474
+  },
+  "inputs": {
+    "model_sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+    "model_bytes": 86720111488,
+    "prompt_sha256": "f53e0d80cb2d4492d24ebd63c7000c397b16ae70f9bf09b3763e5d8323ec209f",
+    "oracle_executable_sha256": "a4056d7297bd0a6de8e46fac294e7913d9bc8c96465e5d68f1b6ef6471e49aa0",
+    "cli_sha256": "5a94ca579c9f83b09138e6d2c78ea07f4007fcf2f558c2f126bc38f0296b9809",
+    "oracle_source": "ccbd16d36895ef9fe8edf7f793014988ff1ab7f4"
+  },
+  "fixture_count": 7669,
+  "fixture_manifest_sha256": "e5e138ce53fecb1308312d30e9b69100abf271fb377ac7bc8f96ccfdebb3db4c"
+}
