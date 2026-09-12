@@ -1,0 +1,61 @@
+   Compiling rust-star-runtime v0.1.0 ($REPO/rust-star/runtime)
+error: failed to run custom build command for `rust-star-runtime v0.1.0 ($REPO/rust-star/runtime)`
+
+Caused by:
+  process didn't exit successfully: `$REPO/rust-star/.work/runtime-target/release/build/rust-star-runtime-23aa595ee02bf1fc/build-script-build` (exit status: 101)
+  --- stdout
+  cargo:rerun-if-env-changed=RUST_STAR_FORCE_NATIVE_REBUILD
+  cargo:rerun-if-changed=src/metal_shim.h
+  cargo:rerun-if-changed=src/metal_shim.m
+  cargo:rerun-if-changed=src/attention_ingress.metal
+  cargo:rerun-if-changed=src/attention_output.metal
+  cargo:rerun-if-changed=src/attention_output_half.metal
+  cargo:rerun-if-changed=src/ffn_router.metal
+  cargo:rerun-if-changed=src/moe_output_prefix.metal
+  cargo:rerun-if-changed=src/routed_prefill.metal
+  cargo:rerun-if-changed=src/compressed_prefill.metal
+  cargo:rerun-if-changed=src/q8_projection_pair.metal
+  cargo:rerun-if-changed=src/sparse_indexed_prefix.metal
+  cargo:rerun-if-changed=../../metal/dsv4_rope.metal
+  cargo:rerun-if-changed=../../metal/dsv4_kv.metal
+  cargo:rerun-if-changed=../../metal/cpy.metal
+  cargo:rerun-if-changed=../../metal/flash_attn.metal
+  cargo:rerun-if-changed=../../metal/softmax.metal
+  cargo:rerun-if-changed=../../metal/sum_rows.metal
+  cargo:rerun-if-changed=../../metal/dense.metal
+  cargo:rerun-if-changed=../../metal/glu.metal
+  cargo:rerun-if-changed=../../metal/moe.metal
+  cargo:rerun-if-changed=../../metal/dsv4_hc.metal
+  cargo:rerun-if-changed=../../metal/dsv4_misc.metal
+  cargo:rerun-if-changed=src/indexer_argsort.metal
+  cargo:rerun-if-changed=src/indexer_scores.metal
+
+  --- stderr
+  $REPO/rust-star/runtime/src/metal_shim.m:7234:40: error: use of undeclared identifier 'raw_cache_target_row'; did you mean 'raw_target_row'?
+   7234 |         result->raw_cache_target_row = raw_cache_target_row;
+        |                                        ^~~~~~~~~~~~~~~~~~~~
+        |                                        raw_target_row
+  $REPO/rust-star/runtime/src/metal_shim.m:6038:26: note: 'raw_target_row' declared here
+   6038 |         const NSUInteger raw_target_row =
+        |                          ^
+  $REPO/rust-star/runtime/src/metal_shim.m:7235:40: error: use of undeclared identifier 'raw_cache_target_row'; did you mean 'raw_target_row'?
+   7235 |         result->raw_cache_guard_rows = raw_cache_target_row;
+        |                                        ^~~~~~~~~~~~~~~~~~~~
+        |                                        raw_target_row
+  $REPO/rust-star/runtime/src/metal_shim.m:6038:26: note: 'raw_target_row' declared here
+   6038 |         const NSUInteger raw_target_row =
+        |                          ^
+  $REPO/rust-star/runtime/src/metal_shim.m:48958:20: warning: unused variable 'chunk_end' [-Wunused-variable]
+   48958 |     const uint32_t chunk_end = chunk_start + 4096u;
+         |                    ^~~~~~~~~
+  $REPO/rust-star/runtime/src/metal_shim.m:52269:13: warning: misleading indentation; statement is not part of the previous 'if' [-Wmisleading-indentation]
+   52269 |             NSUInteger q_b_inner = 0u;
+         |             ^
+  $REPO/rust-star/runtime/src/metal_shim.m:52267:9: note: previous statement is here
+   52267 |         if (!context.prefillLayer2FullQNorm || context.prefillKvRows != continuation_start+continuation_rows)
+         |         ^
+  2 warnings and 2 errors generated.
+
+  thread 'main' (40332) panicked at build.rs:11:9:
+  Objective-C Metal shim compilation failed with exit status: 1
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

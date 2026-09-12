@@ -1,0 +1,63 @@
+rust-star: native 4096-token bootstrap ready for exact prefix rebuild
+rust-star: prefix layer 0 exact
+rust-star: prefix layer 1 exact
+rust-star: prefix layer 2 exact
+rust-star: prefix layer 3 exact
+rust-star: prefix layer 4 exact
+rust-star: prefix layer 5 exact
+rust-star: prefix layer 6 exact
+rust-star: prefix layer 7 exact
+rust-star: prefix layer 8 exact
+rust-star: prefix layer 9 exact
+rust-star: prefix layer 10 exact
+rust-star: prefix layer 11 exact
+rust-star: prefix layer 12 exact
+rust-star: prefix layer 13 exact
+rust-star: prefix layer 14 exact
+rust-star: prefix layer 15 exact
+rust-star: prefix layer 16 exact
+rust-star: prefix layer 17 exact
+rust-star: prefix layer 18 exact
+rust-star: prefix layer 19 exact
+rust-star: prefix layer 20 exact
+rust-star: prefix layer 21 exact
+rust-star: prefix layer 22 exact
+rust-star: prefix layer 23 exact
+rust-star: prefix layer 24 exact
+rust-star: prefix layer 25 exact
+rust-star: prefix layer 26 exact
+rust-star: prefix layer 27 exact
+rust-star: prefix layer 28 exact
+rust-star: prefix layer 29 exact
+rust-star: prefix layer 30 exact
+rust-star: prefix layer 31 exact
+rust-star: prefix layer 32 exact
+rust-star: prefix layer 33 exact
+rust-star: prefix layer 34 exact
+rust-star: prefix layer 35 exact
+rust-star: prefix layer 36 exact
+rust-star: prefix layer 37 exact
+rust-star: prefix layer 38 exact
+rust-star: prefix layer 39 exact
+rust-star: prefix layer 40 exact
+rust-star: prefix layer 41 exact
+rust-star: prefix layer 42 exact
+rust-star: chunk 4096 layer 0 final HC mismatch: actual=0x18a5296a9c248c1c expected=0x8bda50b3f5ec5e19
+       74.13 real        13.97 user        17.06 sys
+          3623927808  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+             3102877  page reclaims
+               16471  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                 315  voluntary context switches
+               54177  involuntary context switches
+        176679087886  instructions retired
+         95063770449  cycles elapsed
+         13313953776  peak memory footprint

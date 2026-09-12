@@ -1,0 +1,13 @@
+{
+  "name": "warmup-A",
+  "role": "A",
+  "pair": null,
+  "order": null,
+  "warmup": true,
+  "exit_code": 0,
+  "started_utc": "2026-09-12T05:30:47.795028+00:00",
+  "finished_utc": "2026-09-12T05:35:36.958649+00:00",
+  "process_wall_seconds": 289.16341662499997,
+  "executable_sha256": "2bf77edb9886f4efa5d011cba963aaef7e2bf140db1b3a09c6193e76bdc77af4",
+  "peak_rss_bytes": 88657313792
+}

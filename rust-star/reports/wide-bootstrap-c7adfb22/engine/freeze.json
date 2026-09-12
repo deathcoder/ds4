@@ -1,0 +1,15 @@
+{
+  "created_utc": "2026-09-12T05:30:46.181601+00:00",
+  "files": {
+    "engine-plan.json": "4f9f76a3f4219b596db04664ceba2a3e020a391365c908e6546ebaddf2ebe5bf",
+    "engine-runner.py": "417e0ec002080039827738c499088df1928e4a7275ae432f625d2de10a3e8354",
+    "engine-audit.py": "76b7f86a780c06d9d9a2ac4c6dc4a2f386d562af7effa4d97fdce2203f34a493",
+    "candidate-build.json": "fc90750b620c02b85bac77020fd840275a59592f719539ca4f32373cc3e832fb",
+    "validation-acceptance.json": "8e3379cb434c8ef39b350c8524f94b6bfcf29c21edb662ce21a047ba128bf984"
+  },
+  "adapter_files": {
+    "rust-star/ruststar_measurement_lib.py": "902f671cf16554917ae3040204f98e4a8eb7bddfd6017f169577aefd9cfd7af4",
+    "rust-star/dwarfstar_measurement_lib.py": "2cc745e2dce7d5959af0fc2418e152483d600231b65e716077d674a7a23ad517",
+    "rust-star/artifact_lib.py": "b65403031d259ff3221c3b9aaf63d541ca9419c82c32f4fbfa4db794c9d1f01c"
+  }
+}

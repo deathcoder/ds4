@@ -1,0 +1,17 @@
+{
+  "criteria_pass": true,
+  "baseline_target_ms": 31943.207666667,
+  "candidate_target_ms": 6700.693208333,
+  "raw_aggregate_ratio": 0.20976895239375815,
+  "control_normalized_aggregate_ratio": 0.20281217157246853,
+  "baseline_controls_ms": 135313.133624991,
+  "candidate_controls_ms": 139954.589833326,
+  "controls": [
+    "attention",
+    "tail",
+    "ingress"
+  ],
+  "baseline_profile_audit_sha256": "ed2dd6113d22f17741fa1600f83c8f50646dc1c3bfec639959dff2eed9447599",
+  "candidate_profile_audit_sha256": "4b5fa448b6c342f00c1e3b11ed4f28df43a2fba9011af3bde693dfdc1f4da79e",
+  "engine_speedup_claim": false
+}

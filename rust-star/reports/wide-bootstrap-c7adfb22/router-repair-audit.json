@@ -1,0 +1,14 @@
+{
+  "passed": true,
+  "four_exact_dispatch_repairs": true,
+  "short_group_sizes_unchanged": [
+    32,
+    64
+  ],
+  "wide_group_size": 256,
+  "compiled_pipeline_maximum": 1024,
+  "source_sha256": "caa61fd5a6ae0c98053d392fcc160b697d40d0ddb7476fe6784ad74cd2bc8fae",
+  "probe_source_sha256": "67964ca987a265c5085af01fc259e201ec4fee4fc38b25565471244a710e46c2",
+  "probe_executable_sha256": "57295f328bc48079509b57d4039d271770947fb466604835c5fc67ce34755a69",
+  "scope": "Local launch legality/output proof only. First model mismatch cause remains unproven until full C0 checks."
+}

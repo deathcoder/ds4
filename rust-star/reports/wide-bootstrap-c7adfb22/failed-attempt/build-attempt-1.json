@@ -1,0 +1,11 @@
+{
+  "utc": "2026-09-12T05:02:04.638710+00:00",
+  "exit_code": 101,
+  "phase": "Objective-C compile before any model execution",
+  "cause": "Removed raw_cache_target_row still used by diagnostic result metadata",
+  "sources": {
+    "rust-star/runtime/src/metal.rs": "de0410c9615a33b4a30c9735d7563eae383cd47c48e0c1a36b3e20f797b856c6",
+    "rust-star/runtime/src/long_prefill.rs": "812ecd5b57a4a977b2b6646a88fdd77fd1154f1d803ca98ce476452f5457f050",
+    "rust-star/runtime/src/metal_shim.m": "ea03276fe5abc5970b327883c8916e3e06492109c9755705b63d840e7d738350"
+  }
+}

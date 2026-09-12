@@ -4666,12 +4666,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         return fail_with_message(error, error_bytes,
             @"prefill complete layer-1 boundary received a null fixture/output pointer");
     }
-    const BOOL native_wide_bootstrap = rows == 4096u && !collect_outputs &&
-        complete_layer1 && continue_layer2_compressors && kv_state_mode == 2u &&
-        position_start > 0u && prefill_rows <= 32768u &&
-        (uint64_t)position_start + rows == prefill_rows;
-    if (n_vocab != 129280u ||
-        (rows != 32u && rows != 64u && !native_wide_bootstrap) ||
+    if (n_vocab != 129280u || (rows != 32u && rows != 64u) ||
         (prefill_rows != 2048u && (prefill_rows < 4096u ||
          prefill_rows > 262144u || prefill_rows%4096u != 0u)) ||
         prefill_rows < rows || prefill_rows % rows != 0u ||
@@ -4683,11 +4678,6 @@ int rust_star_metal_run_prefill_layer0_boundary(
 
     @autoreleasepool {
         RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
-        if (native_wide_bootstrap && (!context.prefillLayerChunkStart ||
-            context.prefillLayerChunkStart.unsignedIntValue != position_start)) {
-            return fail_with_message(error, error_bytes,
-                @"wide bootstrap requires the active native continuation chunk");
-        }
         const BOOL retain_kv_state = kv_state_mode == 1u;
         const BOOL consume_kv_state = kv_state_mode == 2u;
         const BOOL batch_production_tiles = !collect_outputs &&
@@ -5699,13 +5689,13 @@ int rust_star_metal_run_prefill_layer0_boundary(
         layer2_kv_rope_args.ext_factor = 1.0f;
         layer2_kv_rope_args.attn_factor =
             1.0f/(1.0f + 0.1f*logf(1.0f/layer2_freq_scale));
-        int32_t positions[4096];
+        int32_t positions[64];
         for (uint32_t row = 0; row < rows; row++) {
             positions[row] = (int32_t)(position_start + row);
         }
         id<MTLBuffer> position_buffer = [context.device newBufferWithBytes:positions
             length:rows*sizeof(int32_t) options:MTLResourceStorageModeShared];
-        int32_t compressed_positions[1024];
+        int32_t compressed_positions[16];
         for (uint32_t row = 0; row < compressor_tile_rows; row++) {
             compressed_positions[row] =
                 (int32_t)(position_start + row*compressor_ratio);
@@ -6032,19 +6022,12 @@ int rust_star_metal_run_prefill_layer0_boundary(
         [encoder setBuffer:kv_half_buffer offset:0 atIndex:2];
         [encoder dispatchThreadgroups:MTLSizeMake(conversion_groups,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
-        // A wide batch leaves exactly its final 128 rows in the raw ring.
-        const uint32_t raw_copy_rows = MIN(rows, (uint32_t)raw_cache_rows);
-        const uint32_t raw_copy_elements = raw_copy_rows*kv_dim;
-        const NSUInteger raw_source_row = rows-raw_copy_rows;
-        const NSUInteger raw_target_row =
-            (position_start+raw_source_row)%raw_cache_rows;
         [encoder setComputePipelineState:context.cpyF16F32Pipeline];
-        [encoder setBytes:&raw_copy_elements length:sizeof(raw_copy_elements) atIndex:0];
-        [encoder setBuffer:kv_half_buffer
-                     offset:raw_source_row*kv_dim*sizeof(uint16_t) atIndex:1];
+        [encoder setBytes:&kv_elements length:sizeof(kv_elements) atIndex:0];
+        [encoder setBuffer:kv_half_buffer offset:0 atIndex:1];
         [encoder setBuffer:raw_cache_buffer
-                     offset:raw_target_row*kv_dim*sizeof(float) atIndex:2];
-        [encoder dispatchThreadgroups:MTLSizeMake((raw_copy_elements+1023u)/1024u,1,1)
+                     offset:raw_cache_target_row*kv_dim*sizeof(float) atIndex:2];
+        [encoder dispatchThreadgroups:MTLSizeMake(conversion_groups,1,1)
              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
         [encoder endEncoding];
 
@@ -6218,7 +6201,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         [encoder setBuffer:token_buffer offset:0 atIndex:1];
         [encoder setBuffer:router_selected_buffer offset:0 atIndex:2];
         [encoder dispatchThreads:MTLSizeMake(rows,1,1)
-             threadsPerThreadgroup:MTLSizeMake(MIN(rows,256u),1,1)];
+             threadsPerThreadgroup:MTLSizeMake(rows,1,1)];
         [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
         [encoder setBuffer:router_probs_buffer offset:0 atIndex:0];
         [encoder setBuffer:router_selected_buffer offset:0 atIndex:1];
@@ -6237,7 +6220,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
         [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:0];
         [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:1];
         [encoder dispatchThreads:MTLSizeMake(rows,1,1)
-             threadsPerThreadgroup:MTLSizeMake(MIN(rows,256u),1,1)];
+             threadsPerThreadgroup:MTLSizeMake(rows,1,1)];
         [encoder setComputePipelineState:context.routerDivideBatchPipeline];
         [encoder setBuffer:router_weights_buffer offset:0 atIndex:0];
         [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:1];
@@ -6454,19 +6437,12 @@ int rust_star_metal_run_prefill_layer0_boundary(
             [encoder setBuffer:next_kv_half_buffer offset:0 atIndex:2];
             [encoder dispatchThreadgroups:MTLSizeMake(conversion_groups,1,1)
                  threadsPerThreadgroup:MTLSizeMake(256,1,1)];
-            // A wide batch leaves exactly its final 128 rows in the raw ring.
-            const uint32_t raw_copy_rows = MIN(rows, (uint32_t)raw_cache_rows);
-            const uint32_t raw_copy_elements = raw_copy_rows*kv_dim;
-            const NSUInteger raw_source_row = rows-raw_copy_rows;
-            const NSUInteger raw_target_row =
-                (position_start+raw_source_row)%raw_cache_rows;
             [encoder setComputePipelineState:context.cpyF16F32Pipeline];
-            [encoder setBytes:&raw_copy_elements length:sizeof(raw_copy_elements) atIndex:0];
-            [encoder setBuffer:next_kv_half_buffer
-                         offset:raw_source_row*kv_dim*sizeof(uint16_t) atIndex:1];
+            [encoder setBytes:&kv_elements length:sizeof(kv_elements) atIndex:0];
+            [encoder setBuffer:next_kv_half_buffer offset:0 atIndex:1];
             [encoder setBuffer:next_raw_cache_buffer
-                         offset:raw_target_row*kv_dim*sizeof(float) atIndex:2];
-            [encoder dispatchThreadgroups:MTLSizeMake((raw_copy_elements+1023u)/1024u,1,1)
+                         offset:raw_cache_target_row*kv_dim*sizeof(float) atIndex:2];
+            [encoder dispatchThreadgroups:MTLSizeMake(conversion_groups,1,1)
                  threadsPerThreadgroup:MTLSizeMake(256,1,1)];
             [encoder endEncoding];
 
@@ -6640,7 +6616,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
             [encoder setBuffer:token_buffer offset:0 atIndex:1];
             [encoder setBuffer:next_router_selected_buffer offset:0 atIndex:2];
             [encoder dispatchThreads:MTLSizeMake(rows,1,1)
-                 threadsPerThreadgroup:MTLSizeMake(MIN(rows,256u),1,1)];
+                 threadsPerThreadgroup:MTLSizeMake(rows,1,1)];
             [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
             [encoder setBuffer:next_router_probs_buffer offset:0 atIndex:0];
             [encoder setBuffer:next_router_selected_buffer offset:0 atIndex:1];
@@ -6659,7 +6635,7 @@ int rust_star_metal_run_prefill_layer0_boundary(
             [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:0];
             [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:1];
             [encoder dispatchThreads:MTLSizeMake(rows,1,1)
-                 threadsPerThreadgroup:MTLSizeMake(MIN(rows,256u),1,1)];
+                 threadsPerThreadgroup:MTLSizeMake(rows,1,1)];
             [encoder setComputePipelineState:context.routerDivideBatchPipeline];
             [encoder setBuffer:next_router_weights_buffer offset:0 atIndex:0];
             [encoder setBuffer:router_weight_sums_buffer offset:0 atIndex:1];

@@ -1,0 +1,1 @@
+{"passed":true,"hash_max_threads":1024,"clamp_max_threads":1024,"compared_words":29344,"guard_words":96,"rows":[32,64,4096],"repaired_group":256,"rejected_group":4096}

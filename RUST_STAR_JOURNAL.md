@@ -18,6 +18,139 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-09-12 — Close wide bootstrap as a rejected whole-engine candidate
+
+- Completed every planned run: two warm-ups and five AB/BA/AB/BA/AB pairs,
+  all 12 exact transcripts with profiling/readback disabled. Candidate c7adfb22
+  versus frozen accepted 4ced6ee8 has median paired prefill latency -1.127%,
+  steady decode +0.556%, and peak RSS -0.997%. Pairs 1 and 5 are slower;
+  the all-five-faster and separate-order prefill gates both fail. No pair was
+  excluded or rerun, and no retention threshold was changed.
+- Separate macOS peak memory footprint increases +52.484%: median baseline
+  11.539 GiB, candidate 17.593 GiB. Passive timings show median paired tile
+  wall saving 16.477s, transformer command wall increasing 6.710s and host
+  overhead increasing 4.960s. These aggregates do not identify a specific
+  allocation or stall cause. GPU tile time spans first-to-last commands.
+- Final full model/prompt/oracle/executable/source hashes pass. The portable
+  report, rust-star/reports/wide-bootstrap-c7adfb22/README.md, verifies 245
+  artifacts, complete source proofs, the initial compile and 12K failures,
+  the 29,344-word router dispatch proof, all fresh full C0 records and every
+  engine pair. The three full-output runs compare 50,031,360 FP32 words.
+- First packaged verifier failed because ranked Python tuples become JSON
+  arrays. Preserved its failure and original packaged scripts; both complete
+  profile results match exactly after JSON canonicalization. Original frozen
+  audits, raw data and gates are unchanged. Final verifier passes including
+  restoration evidence; its log is .work/wide-bootstrap-c7adfb22-verify-3.log.
+- Restored the three runtime files; all 42 source hashes and the default work
+  executable match accepted 4ced6ee8 (SHA 2bf77edb9886f4efa5d011cba963aaef7e2bf140db1b3a09c6193e76bdc77af4).
+  Candidate commits, executables and failed attempts remain preserved.
+- Source/document whitespace checks pass. The full staged check reports only
+  original whitespace in three archived patch files and two compiler test logs;
+  keep those byte-exact evidence files unchanged and check the remaining paths.
+- Continue immediately: pinned Rust 1.74 compatibility repair, then the prepared
+  routed-input half experiment. No GPU work remains active. No DwarfStar or
+  higher-frontier claim; interrupted 256K work remains paused. No push.
+
+## 2026-09-12 — Queue a pinned-toolchain compatibility check
+
+- Source-only review finds two `.is_none_or` calls in engine-report validation
+  in metal.rs. They exist in accepted 4ced6ee8 as well as c7adfb22; the manifest
+  declares Rust 1.74 and both remote CI jobs install 1.74.0. Official Rust API
+  documentation marks this method since 1.82.0:
+  https://doc.rust-lang.org/std/option/enum.Option.html#method.is_none_or.
+- No Rust 1.74 compiler test has run yet. Record the compiler failure on the
+  restored accepted source, then use the equivalent `map_or(true, predicate)`
+  calls and validate formatting, host tests/build, Python contracts and fixture
+  interoperability with the pinned toolchain. Do not claim remote CI success.
+- Observation and prospective validation are in
+  rust-star/.work/msrv-174-c7adfb22/observation.json. No runtime source mutation,
+  toolchain install or compilation may overlap the active engine block. This
+  bounded compatibility repair can follow full report/pin/restore closure,
+  before the prepared routed-input GPU experiment.
+
+## 2026-09-12 — First whole-engine pair rejects 4K-bootstrap retention
+
+- Pair 1 is valid and preserved: baseline 234.538128s prefill, candidate
+  250.460674s, ratio 1.067888943 (candidate slower). This fails the prospectively
+  required all-five-faster rule; the 4K candidate cannot be retained as an
+  engine improvement under this plan. Do not discard/exclude/rerun this pair.
+- Complete the remaining scheduled pairs to characterize the result, then
+  final full input/source/binary pins, portable report and verification,
+  restore the accepted three runtime files and executable from 4ced6ee8,
+  journal/local commit, and continue. Keep c7adfb22 sources frozen while the
+  existing runner is active, because its preflight requires those exact hashes.
+- Passive pair-1 timings show bootstrap command wall improving 37.350s ->
+  24.550s, while transformer command wall grows 191.002s -> 208.953s and
+  aggregate host overhead grows 6.115s -> 16.773s. This offsets the subpath gain.
+  Larger transient allocation/working-set effects are a hypothesis, not a
+  demonstrated cause. A supplemental complete-block passive phase audit is
+  prepared without new instrumentation, exclusions or acceptance thresholds.
+- Pair-2 candidate also completes validly (239.419839s prefill); its baseline
+  began 2026-09-12T05:53:27 UTC. Read engine/active-run.json for current status.
+  The prepared routed-half experiment remains gated on full milestone closure.
+
+## 2026-09-12 — Refresh remote CI evidence without a workflow dispatch
+
+- Read-only connected GitHub queries still list 134 runs for the research
+  branch. Latest is 33253238025, created 2026-08-29T12:43:51Z; both failed jobs
+  report no steps. No newer remote success is established.
+- The remote manual-only workflow matches the local file exactly, Git blob
+  40fed1e1e2f08bf5169c3053630bbc37f0d47c34. No account/billing status or secrets
+  were accessed; no remote mutation, workflow dispatch or push was performed.
+- Corrected the manual ledger to distinguish the historical billing diagnosis
+  from current account state, which remains unverified. M-001 still needs a
+  successful manual workflow run. Filtered evidence is stored in
+  rust-star/reports/ci-status-2026-09-12.json.
+
+## 2026-09-12 — Prepare the next routed-input experiment without GPU overlap
+
+- While the c7adfb22 whole-engine block runs, prepared source-only follow-on
+  work at rust-star/.work/routed-half-prefill-c7adfb22/. No runtime files changed
+  and no compilation or GPU execution was performed for this next experiment.
+- The passing fresh candidate profile identifies routed gate/up as the largest
+  individual component: 30,345.000ms, 17.20% of recorded stage GPU time.
+  Hypothesis: convert normalized FFN inputs to half once, replacing repeated
+  float-load/half-cast B staging while preserving all IQ2 dequantization, MMA,
+  SwiGLU, clamp and output operations. Future integration can investigate
+  reusing the already-dead attention-input half scratch instead of new buffers.
+- Prospective plan, whole-kernel inverse proof, actual production arguments and
+  encoding, standalone source/harness, edge checks and strict same-arena
+  A/A/candidate audits are prepared. Two sessions reverse three routing/input
+  cases; every neutral gate is inherited from the accepted same-arena protocol.
+  New candidate criteria require every case/session/order median <0.98 and
+  overall median <0.95, including conversion and map cost. No data yet.
+- run.py is deliberately gated on prior milestone-completion.json, completed
+  whole-engine audit and final input hashes. Finish all current engine pairs,
+  verify/package the result, retain or restore and commit before activating it.
+  Compile/source or GPU failures must be preserved; no silent retries.
+- Both current engine warm-ups pass and are excluded. Pair 1 began with baseline
+  at 2026-09-12T05:39:51 UTC. Read the active-run file for current progress.
+  Supplemental parsing of the separately captured macOS peak memory footprint
+  is prepared, alongside RSS, without adding or changing retention thresholds.
+
+## 2026-09-12 — Repaired wide bootstrap passes C0 and diagnostic selection
+
+- Frozen candidate c7adfb22706d5a5883d8a251a3a9046a2c8e587b, executable
+  SHA-256 1a055037fbf65772258959503c97aeea184dbaa4913d3db1a523f7fae03b9794,
+  passes 320 release tests, forced native build and exact source restoration.
+- 12K internal checks pass all 43 layers of the initial prefix and both
+  continuation chunks, including the original 7b4b76ac failure site. Separate
+  normal and profiled full 32K/128 runs each pass all 16,677,120 FP32 words.
+  No oracle values, arithmetic, tolerances or thresholds were changed.
+- Strict profile audit passes all parent packets and attention/tail intervals.
+  Bootstrap ingress drops from 31,943.208ms to 6,700.693ms. Raw ratio 0.209769
+  and control-normalized ratio 0.202812 both pass the preset <0.90 gate.
+  This diagnostic result is not a whole-engine or DwarfStar speedup claim.
+- The complete unprofiled engine block is now active under
+  .work/autonomous-prefill-a46dfe8b/wide-bootstrap-router-bound/engine/.
+  Two warm-ups, then five pairs AB/BA/AB/BA/AB against frozen accepted4ced6ee8;
+  all exactness, prefill, decode and RSS gates remain as prospectively fixed.
+  Read engine/active-run.json and engine-execution.log before further GPU work.
+  Do not mutate frozen runtime sources/scripts or launch concurrent GPU work.
+- Post-run complete input hashing, portable package, independent verifier and
+  decision-report generators are prepared. Execute only after all engine runs
+  finish; preserve every attempt. The research mandate continues afterward.
+
 ## 2026-09-12 — Preserve wide-bootstrap failure and bound router dispatches
 
 - Candidate 7b4b76ac passed 320 host tests and forced native build, then failed
@@ -4874,16 +5007,18 @@ Next:
 
 ### Current resume checkpoint (updated 2026-09-12)
 
-- ACTIVE: autonomous milestone sequence requested 2026-09-12. The fresh
-  accepted-runtime 32K profile passes; bootstrap costs 31.943s / 16.27%.
-  Candidate 7b4b76ac failed the first 12K internal gate at chunk4096/layer0 HC;
-  every prefix layer was exact. Its queue stopped and all evidence remains in
-  .work/autonomous-prefill-a46dfe8b/wide-bootstrap/. Four illegal 4096-thread
-  router groups were identified; both compiled pipelines allow only 1024.
-  A standalone 32/64/4096-row exact/guard probe passes the 256-thread repair.
-  New attempt wide-bootstrap-router-bound/ preserves the original gates.
-  Next build/freeze this host-only repair, then 12K/32K C0/profile and engine
-  pairs only if all diagnostic gates pass. Continue after milestone closure.
+- ACTIVE: autonomous milestone sequence; continue after each completed decision.
+  Wide bootstrap c7adfb22 is rejected after all 12 planned engine runs. Median
+  prefill -1.127%, but two slower pairs and failed separate-order gate; separate
+  peak memory footprint +52.484%. All 42 runtime source hashes and the work
+  executable are restored to accepted4ced6ee8. Complete verified report:
+  rust-star/reports/wide-bootstrap-c7adfb22/README.md (245 artifacts).
+  No GPU work is active. Next: run the prepared .work/msrv-174-c7adfb22/run.py
+  after local milestone closure; it first reproduces the pinned compiler error
+  and then validates the equivalent two-call compatibility repair. Next GPU
+  study is .work/routed-half-prefill-c7adfb22/run.py, with fixed neutral and
+  candidate selection gates. Keep full C0/engine validation before retention.
+  This remains Rust-versus-Rust evidence; 256K stays paused and no push occurs.
 
 - COMPLETE: attention-output whole-engine milestone. Candidate 4ced6ee8 is
   retained. Report rust-star/reports/attention-output-engine-4ced6ee8/README.md.
@@ -5805,18 +5940,22 @@ Next:
 
 ## Immediate Next Actions
 
-1. Finish and strictly audit the single current-runtime profiled 32K/128 run
-   in rust-star/.work/autonomous-prefill-a46dfe8b/. Preserve any failure and
-   diagnose it; never silently rerun or weaken counter/C0 requirements.
-2. Use that fresh profile and source evidence to select the next substantial
-   C0-preserving change. Freeze its validation and whole-engine criteria before
-   measurement, then implement, validate, retain or revert, package evidence,
-   update this journal and commit locally.
-3. Continue directly to the next justified milestone after each result. Work
-   toward the charter's remaining initial-runtime requirements; do not confuse
-   individual accepted improvements with project completion. Keep 256K paused
-   until the performance-first priority justifies a new frontier plan; preserve
-   no-publication and immutable-oracle boundaries.
+1. Complete the local wide-bootstrap rejection checkpoint and write its
+   milestone-completion.json. Report and restoration already verify; no GPU
+   work remains. Preserve all original and packaged verification failures.
+2. Run rust-star/.work/msrv-174-c7adfb22/run.py for the pinned Rust 1.74
+   compatibility issue. It requires restored accepted sources and prior closure,
+   preserves the expected compiler failure, changes only two Option calls, and
+   runs pinned host/build/artifact validation. Package the result and commit
+   locally; do not claim remote CI success or fresh model/performance evidence.
+3. Continue with rust-star/.work/routed-half-prefill-c7adfb22/run.py. Its source
+   and whole-kernel inverse proof, actual production arguments, scratch lifetime
+   observation, strict edge/A/A/mixed audits and prospective gates are prepared.
+   No integration unless local exactness and every selection criterion pass.
+   Full C0 and a separately frozen whole-engine study are required afterward.
+4. Continue directly to the next justified milestone after each result. Keep
+   initial-scope requirements visible, retain the immutable oracle and no-push
+   boundary, and leave the old 256K campaign paused until a justified new plan.
 
 ## Entries
 

@@ -1,0 +1,129 @@
+{
+  "passed": true,
+  "metric": "peak memory footprint reported by macOS /usr/bin/time -l",
+  "interpretation": "Supplemental descriptive metric, distinct from maximum resident set size. No new or changed retention threshold.",
+  "summary": {
+    "baseline": {
+      "count": 5,
+      "median": 12389959536,
+      "mad": 1752992,
+      "minimum": 12382586760,
+      "maximum": 12391712528,
+      "values": [
+        12391712528,
+        12386272872,
+        12382586760,
+        12389959536,
+        12390664024
+      ]
+    },
+    "candidate": {
+      "count": 5,
+      "median": 18890639240,
+      "mad": 180104,
+      "minimum": 18890229616,
+      "maximum": 18895423392,
+      "values": [
+        18895423392,
+        18890229616,
+        18890672008,
+        18890639240,
+        18890459136
+      ]
+    },
+    "paired_ratio": {
+      "count": 5,
+      "median": 1.5248435879467328,
+      "mad": 0.0002503455724156556,
+      "minimum": 1.5245719760789471,
+      "maximum": 1.5255836582565565,
+      "values": [
+        1.5248435879467328,
+        1.5250939335191485,
+        1.5255836582565565,
+        1.5246731989004294,
+        1.5245719760789471
+      ]
+    },
+    "orders": {
+      "AB": {
+        "count": 3,
+        "median": 1.5248435879467328,
+        "mad": 0.0002716118677856816,
+        "minimum": 1.5245719760789471,
+        "maximum": 1.5255836582565565,
+        "values": [
+          1.5248435879467328,
+          1.5255836582565565,
+          1.5245719760789471
+        ]
+      },
+      "BA": {
+        "count": 2,
+        "median": 1.5248835662097888,
+        "mad": 0.00021036730935952708,
+        "minimum": 1.5246731989004294,
+        "maximum": 1.5250939335191485,
+        "values": [
+          1.5250939335191485,
+          1.5246731989004294
+        ]
+      }
+    }
+  },
+  "pairs": [
+    {
+      "pair": 1,
+      "order": "AB",
+      "baseline_bytes": 12391712528,
+      "candidate_bytes": 18895423392,
+      "ratio": 1.5248435879467328
+    },
+    {
+      "pair": 2,
+      "order": "BA",
+      "baseline_bytes": 12386272872,
+      "candidate_bytes": 18890229616,
+      "ratio": 1.5250939335191485
+    },
+    {
+      "pair": 3,
+      "order": "AB",
+      "baseline_bytes": 12382586760,
+      "candidate_bytes": 18890672008,
+      "ratio": 1.5255836582565565
+    },
+    {
+      "pair": 4,
+      "order": "BA",
+      "baseline_bytes": 12389959536,
+      "candidate_bytes": 18890639240,
+      "ratio": 1.5246731989004294
+    },
+    {
+      "pair": 5,
+      "order": "AB",
+      "baseline_bytes": 12390664024,
+      "candidate_bytes": 18890459136,
+      "ratio": 1.5245719760789471
+    }
+  ],
+  "warmups": {
+    "warmup-A": 12386010944,
+    "warmup-B": 18890606520
+  },
+  "raw_files": {
+    "engine/warmup-A/run.log": "64b2f8fef9f37327f79f15e07b8318dd15d3220834513b741ae9d7b463bd7456",
+    "engine/warmup-B/run.log": "f1bcdbe9923d9d0b42a1479e0487cb95e2e783cd8de0df0808cdeb5dd9682de3",
+    "engine/pair-1-A/run.log": "36e92452007f4e6343ba98a2bafabcf18f30746fc94abdf9f71ba3867b057e93",
+    "engine/pair-1-B/run.log": "c0eb19d5d2c7136056cd15b3375ae2d5b65f7026234a1bd20f061b3c93952d1a",
+    "engine/pair-2-B/run.log": "0d07c26dcdcf1c1f7d273981ea74fe9fae60314903fc7c81f4b3f3bd78db3dd7",
+    "engine/pair-2-A/run.log": "ddd5b4d016e8dd72a44b250ad9328732679cde45f73519a992264b044869adb6",
+    "engine/pair-3-A/run.log": "62ac703d5c2deaaf23624c7326904ad0e097d4c340e730075e2f35c56d0c027f",
+    "engine/pair-3-B/run.log": "19ecfa253db6c6f1f5b1f543399d514392011d3aa94fa6af5fa0e8930bdda9e3",
+    "engine/pair-4-B/run.log": "e21c376c436c09e5eeb512859deba16928a2c3c81dbe9631e281a9d273efedb5",
+    "engine/pair-4-A/run.log": "1369da2b2c4c023459719222e29d449869dbf47d694e4d61208041dbb2b1d4e2",
+    "engine/pair-5-A/run.log": "e6e137c6f49c76d3b5931e2653c92cc3f3f51a83cfab13ee6ef34858204bf5d2",
+    "engine/pair-5-B/run.log": "863e83f8bd0b0a4f03287271194f10acd2e6e40af232b5df9a76f960f9c6c594"
+  }
+}

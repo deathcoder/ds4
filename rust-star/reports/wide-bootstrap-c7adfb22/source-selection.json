@@ -1,0 +1,12 @@
+{
+  "utc": "2026-09-12T05:00:28.486249+00:00",
+  "profile_audit_sha256": "ed2dd6113d22f17741fa1600f83c8f50646dc1c3bfec639959dff2eed9447599",
+  "target_gpu_ms": 31943.207666667,
+  "target_recorded_stage_share": 0.16267708593990332,
+  "baseline_source_commit": "4ced6ee8",
+  "files": [
+    "rust-star/runtime/src/metal.rs",
+    "rust-star/runtime/src/long_prefill.rs",
+    "rust-star/runtime/src/metal_shim.m"
+  ]
+}

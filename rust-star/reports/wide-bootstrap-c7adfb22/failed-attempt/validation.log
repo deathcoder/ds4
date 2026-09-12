@@ -1,0 +1,5 @@
+START candidate-12k-internal 2026-09-12T05:09:14.658316+00:00
+Traceback (most recent call last):
+  File "$CAMPAIGN/wide-bootstrap/run-validation.py", line 35, in <module>
+    observe(host,'after');s=dict(name=name,exit_code=p.returncode,started_utc=started,finished_utc=utc(),elapsed_seconds=time.monotonic()-start,executable_sha256=sha(exe));m=re.search(r'(\d+)\s+maximum resident set size',(w/(name+'.log')).read_text());s['peak_rss_bytes']=int(m[1]) if m else None;(w/(name+'-status.json')).write_text(json.dumps(s,indent=2)+'\n');assert p.returncode==0,s
+AssertionError: {'name': 'candidate-12k-internal', 'exit_code': 1, 'started_utc': '2026-09-12T05:09:14.658316+00:00', 'finished_utc': '2026-09-12T05:10:29.027690+00:00', 'elapsed_seconds': 74.370895958, 'executable_sha256': '1332f920a1b0d63df54e393112d196ab0addaf76bc79e9947748c525b0844239', 'peak_rss_bytes': 3623927808}

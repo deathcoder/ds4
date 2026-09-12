@@ -1,0 +1,13 @@
+{
+  "name": "pair-2-B",
+  "role": "B",
+  "pair": 2,
+  "order": "BA",
+  "warmup": false,
+  "exit_code": 0,
+  "started_utc": "2026-09-12T05:48:57.019790+00:00",
+  "finished_utc": "2026-09-12T05:53:25.357314+00:00",
+  "process_wall_seconds": 268.33299020799996,
+  "executable_sha256": "1a055037fbf65772258959503c97aeea184dbaa4913d3db1a523f7fae03b9794",
+  "peak_rss_bytes": 88656936960
+}

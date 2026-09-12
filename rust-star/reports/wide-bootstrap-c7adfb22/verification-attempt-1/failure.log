@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "$REPO/rust-star/reports/wide-bootstrap-c7adfb22/portable-audit-profile.py", line 70, in <module>
+    if p.exists():assert read(p.name)==r
+AssertionError
+Traceback (most recent call last):
+  File "$REPO/rust-star/reports/wide-bootstrap-c7adfb22/verify-report.py", line 61, in <module>
+    assert s==(w/(prefix+'portable-audit-profile.py')).read_text();subprocess.run([sys.executable,str(w/(prefix+'portable-audit-profile.py'))],check=True,stdout=subprocess.DEVNULL,env=env)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/subprocess.py", line 528, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/Applications/Xcode.app/Contents/Developer/usr/bin/python3', '$REPO/rust-star/reports/wide-bootstrap-c7adfb22/portable-audit-profile.py']' returned non-zero exit status 1.

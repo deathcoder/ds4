@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "runs": [
+    {
+      "name": "current-32k-profiled",
+      "exit_code": 0,
+      "started_utc": "2026-09-12T04:54:59.515125+00:00",
+      "finished_utc": "2026-09-12T04:59:11.693962+00:00",
+      "elapsed_seconds": 252.179586916,
+      "executable_sha256": "2bf77edb9886f4efa5d011cba963aaef7e2bf140db1b3a09c6193e76bdc77af4",
+      "peak_rss_bytes": 3348054016
+    }
+  ],
+  "full_fp32_words_per_run": 16677120
+}

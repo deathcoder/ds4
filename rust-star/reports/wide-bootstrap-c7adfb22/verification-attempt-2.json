@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "artifacts": 243,
+  "preserved_failed_model_runs": 1,
+  "router_words": 29344,
+  "full_model_fp32_words": 50031360,
+  "engine_runs": 12,
+  "timed_pairs": 5,
+  "retained": false
+}

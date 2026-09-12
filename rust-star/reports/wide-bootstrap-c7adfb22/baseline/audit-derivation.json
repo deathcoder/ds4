@@ -1,0 +1,5 @@
+{
+  "source": "rust-star/reports/32k-compressed-skip-9d35953f/audit.py",
+  "source_sha256": "34cf24ed123c40029658c252bf6465b3849225d063eca61a03436c67342ab613",
+  "transformation": "Reuse exact audit_profile function; change expected execution count from three to one for this single-run diagnostic; SHA reads local raw files. Add full tail-component ranking."
+}

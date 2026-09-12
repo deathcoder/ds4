@@ -1,0 +1,9 @@
+{
+  "utc": "2026-09-12T06:28:15.130550+00:00",
+  "first_failure": "Original audit recomputed ranked_tail_components as tuples; stored JSON contains arrays. Direct Python equality fails although all serialized values match.",
+  "different_fields_in_both_profiles": [
+    "ranked_tail_components"
+  ],
+  "both_profiles_exact_after_json_roundtrip": true,
+  "changes": "Only portable audit adapters and their exact derivation check; original frozen audits, source, raw measurements and decisions unchanged."
+}

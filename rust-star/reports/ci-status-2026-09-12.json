@@ -1,0 +1,94 @@
+{
+  "schema": "rust-star-ci-readonly-refresh-v1",
+  "observed_utc": "2026-09-12 05:43:47 UTC",
+  "repository": "deathcoder/ds4",
+  "branch": "agent/rust-star-bootstrap",
+  "source_urls": [
+    "https://api.github.com/repos/deathcoder/ds4/actions/runs?branch=agent%2Frust-star-bootstrap&per_page=5",
+    "https://api.github.com/repos/deathcoder/ds4/actions/runs/33253238025/jobs",
+    "https://github.com/deathcoder/ds4/blob/agent/rust-star-bootstrap/.github/workflows/rust-star-host.yml"
+  ],
+  "total_count": 134,
+  "runs": [
+    {
+      "id": 33253238025,
+      "name": "Rust Star host contracts",
+      "head_sha": "0aac101450dfe7ec9235309ef592d1a155f60850",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "failure",
+      "created_at": "2026-08-29T12:43:51Z",
+      "html_url": "https://github.com/deathcoder/ds4/actions/runs/33253238025",
+      "check_suite_id": 90121131242
+    },
+    {
+      "id": 33245661291,
+      "name": "Rust Star host contracts",
+      "head_sha": "0cbffdf59dfb84127ffc49ebf14a250d6253f7bd",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "failure",
+      "created_at": "2026-08-29T09:30:45Z",
+      "html_url": "https://github.com/deathcoder/ds4/actions/runs/33245661291",
+      "check_suite_id": 90101584720
+    },
+    {
+      "id": 33244936924,
+      "name": "Rust Star host contracts",
+      "head_sha": "b69b73449040a6b77525eb844a990edeb715f09a",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "failure",
+      "created_at": "2026-08-29T09:12:16Z",
+      "html_url": "https://github.com/deathcoder/ds4/actions/runs/33244936924",
+      "check_suite_id": 90099716831
+    },
+    {
+      "id": 33243179687,
+      "name": "Rust Star host contracts",
+      "head_sha": "2a42394cf77c94455007cef2d9f968d7137949fa",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "failure",
+      "created_at": "2026-08-29T08:27:11Z",
+      "html_url": "https://github.com/deathcoder/ds4/actions/runs/33243179687",
+      "check_suite_id": 90095205950
+    },
+    {
+      "id": 33241649113,
+      "name": "Rust Star host contracts",
+      "head_sha": "b672ad9dc094a5f1e982962d7b37d4cb57cea137",
+      "event": "push",
+      "status": "completed",
+      "conclusion": "failure",
+      "created_at": "2026-08-29T07:47:24Z",
+      "html_url": "https://github.com/deathcoder/ds4/actions/runs/33241649113",
+      "check_suite_id": 90091221619
+    }
+  ],
+  "latest_run_jobs": [
+    {
+      "id": 99102418271,
+      "name": "host-contracts",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_id": 33253238025,
+      "logs_url": null,
+      "steps": null
+    },
+    {
+      "id": 99102418331,
+      "name": "metal-shim-build",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_id": 33253238025,
+      "logs_url": null,
+      "steps": null
+    }
+  ],
+  "workflow_blob_sha": "40fed1e1e2f08bf5169c3053630bbc37f0d47c34",
+  "remote_workflow_matches_local": true,
+  "remote_workflow_manual_only": true,
+  "current_billing_lock_verified": false,
+  "interpretation": "No newer run than August 29 is listed; the latest two failed jobs have no steps. The historical billing blocker is not independently verified as still active today. A successful manual workflow run remains unverified. No workflow dispatch, billing/account access, secrets access, push or remote mutation was performed."
+}

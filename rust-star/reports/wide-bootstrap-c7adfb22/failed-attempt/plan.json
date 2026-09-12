@@ -1,0 +1,78 @@
+{
+  "schema": "rust-star-native-wide-bootstrap-milestone-v1",
+  "created_utc": "2026-09-12T04:59:31.185397+00:00",
+  "starting_commit": "a46dfe8b",
+  "baseline_runtime": "4ced6ee8",
+  "prerequisite": "Current runtime full 32K/128 profile passes exact outputs and strict counter coverage. Bootstrap ingress must represent at least 10 percent of recorded stage GPU time, or reconsider this target before runtime edits.",
+  "hypothesis": "For native continuation at overall frontiers up to 32K, replacing sixty-four 64-token layers-0/1/2 bootstrap tiles per 4K chunk with one 4K batch amortizes expert work and repeated history conversion. All math kernels and arithmetic remain unchanged.",
+  "scope": [
+    "Only nonzero native continuation chunks at overall frontiers <=32768",
+    "Initial prefix, 2K, legacy continuation and >32K schedules unchanged",
+    "Row-derived positions and compressor positions up to 4096/1024 entries",
+    "Preserve raw 128-row cache snapshot with the final 128 input rows for a 4K batch; existing 32/64 writes unchanged",
+    "Keep existing ratio-4 state refresh and compressor arithmetic; diagnose any mismatch without accepting it"
+  ],
+  "prior_failure": "Historical 128-row bootstrap diverged at decode step 6 and remains rejected. This current-source investigation explicitly checks all logits and state-sensitive decode steps; it is not retroactive acceptance.",
+  "validation": [
+    "Source scope and complete inverse-edit proof",
+    "Release host tests, formatting, forced native release build",
+    "12K native internal checkpoints including new wide chunks",
+    "Normal full 32K/128 C0 with all 16677120 FP32 words",
+    "Candidate full 32K/128 profiled C0 and unchanged strict stage/component audit"
+  ],
+  "diagnostic_selection": {
+    "target": "bootstrap_ingress",
+    "raw_aggregate_ratio_below": 0.9,
+    "control_normalized_aggregate_ratio_below": 0.9,
+    "controls": [
+      "attention",
+      "tail",
+      "ingress"
+    ],
+    "purpose": "Require material target improvement before committing a full engine block; not a performance claim"
+  },
+  "engine_plan": {
+    "context": 32768,
+    "gen_tokens": 128,
+    "warmups": [
+      "A",
+      "B"
+    ],
+    "orders": [
+      "AB",
+      "BA",
+      "AB",
+      "BA",
+      "AB"
+    ],
+    "A": "Frozen accepted runtime 4ced6ee8",
+    "B": "Wide-bootstrap candidate after all exact gates",
+    "retention_criteria": {
+      "all_five_pairs_prefill_faster": true,
+      "both_order_median_prefill_ratio_below": 0.99,
+      "median_steady_decode_tps_ratio_at_least": 0.97,
+      "both_order_steady_decode_tps_ratio_at_least": 0.95,
+      "median_peak_rss_ratio_at_most": 1.02
+    }
+  },
+  "failure_policy": "Preserve every attempt. Correctness failures stop performance measurement and require first-divergence diagnosis; no blind retries or gate relaxation. If this hypothesis fails, restore production and continue the autonomous project with the next justified target.",
+  "no_push": true,
+  "no_256k": true,
+  "indexed_components": [
+    "indexer_q_projection",
+    "indexer_q_transform",
+    "indexer_weight_projection",
+    "indexer_scores",
+    "topk_selection",
+    "topk_ordering",
+    "kv_conversion",
+    "indexed_attention",
+    "inverse_rope"
+  ],
+  "compressed_components": [
+    "kv_conversion",
+    "mask_blocks",
+    "compressed_attention",
+    "inverse_rope"
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "baseline-rust-star": {
+    "sha256": "2bf77edb9886f4efa5d011cba963aaef7e2bf140db1b3a09c6193e76bdc77af4",
+    "bytes": 1427014368,
+    "reason": "Executable omitted; source/build/validation identities retained."
+  },
+  "candidate-rust-star": {
+    "sha256": "1a055037fbf65772258959503c97aeea184dbaa4913d3db1a523f7fae03b9794",
+    "bytes": 1427014368,
+    "reason": "Executable omitted; source/build/validation identities retained."
+  },
+  "router-probe": {
+    "sha256": "57295f328bc48079509b57d4039d271770947fb466604835c5fc67ce34755a69",
+    "bytes": 52128,
+    "reason": "Executable omitted; source/build/validation identities retained."
+  },
+  "baseline/current-rust-star": {
+    "sha256": "2bf77edb9886f4efa5d011cba963aaef7e2bf140db1b3a09c6193e76bdc77af4",
+    "bytes": 1427014368,
+    "reason": "Executable omitted; source/build/validation identities retained."
+  },
+  "failed-attempt/baseline-rust-star": {
+    "sha256": "2bf77edb9886f4efa5d011cba963aaef7e2bf140db1b3a09c6193e76bdc77af4",
+    "bytes": 1427014368,
+    "reason": "Executable omitted; source/build/validation identities retained."
+  },
+  "failed-attempt/candidate-rust-star": {
+    "sha256": "1332f920a1b0d63df54e393112d196ab0addaf76bc79e9947748c525b0844239",
+    "bytes": 1427014368,
+    "reason": "Executable omitted; source/build/validation identities retained."
+  }
+}

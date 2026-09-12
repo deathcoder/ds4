@@ -1,0 +1,11 @@
+{
+  "utc": "2026-09-12T06:20:05.992737+00:00",
+  "phase": "Static review before first report package/verification",
+  "observed_failure": "Naively applying pre-format Rust edits did not reproduce post-rustfmt first-build SHA for metal.rs.",
+  "resolution": "Both first-compiled Rust source hashes equal the packaged corrected-candidate snapshots. The first C host reconstructs directly from recorded initial edits. Check these actual compiled identities separately.",
+  "followup_check": "All three first-build source hashes pass with the corrected reconstruction.",
+  "file": "verify-report.py",
+  "before_sha256": "7b7a559a5bdc0fbbeda0756566599223fc8ac88384bd4d1e865c36845625cc8b",
+  "after_sha256": "49fb5315a1b4772ac3448c6911f65e5be46a00f63a3127b37a56cce1036a0f62",
+  "runtime_or_measurement_changes": false
+}

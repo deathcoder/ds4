@@ -22,18 +22,22 @@ shared output should be reduced to the filename where possible.
 
 ## M-001 — Confirm GitHub Actions for the research branch
 
-Status: `BLOCKED` on the `deathcoder` account billing lock
+Status: `BLOCKED` pending a successful manual run; the last diagnosed cause was
+the `deathcoder` account billing lock (current account state not reverified).
 
 Why manual:
 
-- GitHub refuses to start either workflow job while the owning account is
-  locked over billing. The first 134 runs all failed before executing a step.
+- The historical billing restriction prevented either workflow job from
+  executing a step. A read-only refresh on 2026-09-12 still lists 134 runs,
+  with the latest on 2026-08-29 and no steps in either failed job. This does
+  not independently establish whether the account remains locked today.
 - The workflow is manual-only until that account issue is resolved so pushes
   and pull requests do not create false-red results.
 
 Procedure:
 
-1. Resolve the billing lock on the `deathcoder` account.
+1. Confirm the `deathcoder` billing restriction is resolved; resolve it if
+   still active.
 2. Open the repository's **Actions** tab and select
    **Rust Star host contracts**.
 3. Use **Run workflow**, choose branch `agent/rust-star-bootstrap`, and run it.
@@ -49,6 +53,16 @@ Success condition:
 
 - Formatting, Rust tests, release build, Python tests, and the cross-language
   artifact check all pass on pinned Rust 1.74.
+
+Read-only refresh (2026-09-12):
+
+- [Latest observed run](https://github.com/deathcoder/ds4/actions/runs/33253238025)
+  is still the August 29 failure; both jobs report no steps. No new run was
+  dispatched and no account/billing or secret setting was accessed.
+- The remote manual-only workflow exactly matches the local file (Git blob
+  40fed1e1e2f08bf5169c3053630bbc37f0d47c34).
+- Filtered evidence: `rust-star/reports/ci-status-2026-09-12.json`. Local
+  release-test success does not complete this remote workflow requirement.
 
 ## M-002 — Compile and inspect the real GGUF on the M1 Ultra
 

@@ -1,0 +1,7 @@
+{
+  "utc": "2026-09-12T06:04:03.569869+00:00",
+  "file": "write-report.py",
+  "before_sha256": "f726bdd9117111e40ff3ce22cbfdbf0aca95e3ad57b4f6358ff68ad7287d0939",
+  "after_sha256": "1fde9ee6dacc4a8ae2b97eb3e3ad67f85a7db70aa3a11efc86f2d0024a9707b5",
+  "reason": "Clarify candidate-only behavior and passive bootstrap GPU span semantics before first report generation; no measurement or frozen audit changes."
+}

@@ -529,6 +529,16 @@ source/correctness/statistics verifier. Extra transient scratch is 320 MiB.
 All final pins pass and GPU work is finished. This is a 32K Rust-versus-Rust
 result, not DwarfStar parity or a higher-frontier validation; 256K remains paused.
 
+The subsequent 4K bootstrap candidate `c7adfb22` is rejected after a complete
+32K study. Internal/full C0 and strict component audits pass, but two of five
+engine pairs are slower and the separate-order prefill gate fails; median
+paired prefill is -1.127%. Separate peak memory footprint rises 52.484%
+(11.539 to 17.593 GiB), despite lower peak RSS. Report
+`rust-star/reports/wide-bootstrap-c7adfb22/README.md` preserves the initial
+compile/C0 failures, all 12 engine processes, final full hashes, portable
+verification and completed restoration of all accepted4ced6ee8 source hashes
+and executable. The diagnostic bootstrap saving is not a retained engine gain.
+
 Current implementation boundaries, evidence, and immediate actions are maintained
 in `RUST_STAR_JOURNAL.md`. As of 2026-09-09, native prefill through all 43 layers
 and the output head is C0 exact at 128K, with 128 exact full-logit decode steps
