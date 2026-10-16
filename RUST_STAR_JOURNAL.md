@@ -20,7 +20,7 @@ history; add a correction and update the current-state summary.
 
 ## 2026-10-16 — Source archival and local project retirement
 
-D authorized review and publication of all missing Rust Star source, verification from GitHub, then complete removal of the local Rust Star project. Preserve the existing research history and oracle branches, plus 1,596 previously ignored/untracked source files in rust-star/archive/local-source-20261016. The archive includes the modified oracle-v3 working-tree patch and revision, experimental/rejected source, scripts and notes; it is not new production acceptance.
+D authorized review and publication of all missing Rust Star source, verification from GitHub, then complete removal of the local Rust Star project. Preserve the existing research history and oracle branches, plus 1,589 previously ignored/untracked source files in rust-star/archive/local-source-20261016. The archive includes the modified oracle-v3 working-tree patch and revision, experimental/rejected source, scripts and notes; it is not new production acceptance.
 
 After remote verification, remove the Rust Star checkout, nested oracle worktrees, generated tensors, binaries and external runtime-target directory. The separate ds4 checkout, its shared Git database and model files remain outside this retirement scope. Large untracked raw evidence will no longer be available locally; historical reports and source remain on GitHub. Source archival does not establish new tests, benchmarks or a packaged release. Restore source by cloning the agent/rust-star-bootstrap branch from deathcoder/ds4; regenerate raw captures as needed.
 

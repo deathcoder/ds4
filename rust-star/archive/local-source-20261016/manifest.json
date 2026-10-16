@@ -1075,31 +1075,6 @@
     "bytes": 4973
   },
   {
-    "original_path": "rust-star/.work/capture-decode-replay-check.dSYM/Contents/Resources/Relocations/aarch64/capture-decode-replay-check.yml",
-    "sha256": "e7312a12f1e6d98229c9b76de65868a8a6ab8969de04be64122177d40160cf18",
-    "bytes": 129
-  },
-  {
-    "original_path": "rust-star/.work/capture-decode-replay.dSYM/Contents/Resources/Relocations/aarch64/capture-decode-replay.yml",
-    "sha256": "a609149bbc3f417ab58ce4be1e74eb1891b7eb20765dedfb51f1cf8c66338bf4",
-    "bytes": 123
-  },
-  {
-    "original_path": "rust-star/.work/capture-prefill-decode-frontier-command-boundary.dSYM/Contents/Resources/Relocations/aarch64/capture-prefill-decode-frontier-command-boundary.yml",
-    "sha256": "d4a8fc04561c5beabcdd1328a9de6c3ae2f5d5194d0d43f39749cfc1823d455a",
-    "bytes": 150
-  },
-  {
-    "original_path": "rust-star/.work/capture-prefill-decode-frontier-layer17-command-boundary.dSYM/Contents/Resources/Relocations/aarch64/capture-prefill-decode-frontier-layer17-command-boundary.yml",
-    "sha256": "29df578dcd8f42b18b2dbaa35ed2d31934518e9a2ab2a60e982b38799c3a7420",
-    "bytes": 158
-  },
-  {
-    "original_path": "rust-star/.work/capture-prefill-decode-frontier.dSYM/Contents/Resources/Relocations/aarch64/capture-prefill-decode-frontier.yml",
-    "sha256": "167167e4c090d67f97ecae412727b5c13767517c6906ad362755b235ae71e1b3",
-    "bytes": 120
-  },
-  {
     "original_path": "rust-star/.work/compressed-aa-protocol-a6bf9e24/arguments.h",
     "sha256": "78fad180f3ae45bf2ed24eb561e866f5f108b0bc93c7d670f51953754f9bcde3",
     "bytes": 1227
@@ -3438,16 +3413,6 @@
     "original_path": "rust-star/.work/native-32k-v31/oracle-transcript-source/Makefile",
     "sha256": "aebfb4420c3e09c34e640cf6274b7d109b4ab5d857390e6da16770525669cefd",
     "bytes": 22253
-  },
-  {
-    "original_path": "rust-star/.work/native-32k-v31/oracle-transcript-source/capture-32k-transcript.dSYM/Contents/Resources/Relocations/aarch64/capture-32k-transcript.yml",
-    "sha256": "6a86b401af728c4d1d51759f27f78800aa21560f18b62e5555a72ee022af41a2",
-    "bytes": 164
-  },
-  {
-    "original_path": "rust-star/.work/native-32k-v31/oracle-transcript-source/capture-deferred.dSYM/Contents/Resources/Relocations/aarch64/capture-deferred.yml",
-    "sha256": "7738b98c2f1a19c6e06b6b918dd05acd34a5291d6a4b6656645e11531af48eae",
-    "bytes": 158
   },
   {
     "original_path": "rust-star/.work/native-32k-v31/oracle-transcript-source/capture_32k_transcript.c",
