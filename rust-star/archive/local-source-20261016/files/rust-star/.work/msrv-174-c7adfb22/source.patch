@@ -1,0 +1,22 @@
+diff --git a/rust-star/runtime/src/metal.rs b/rust-star/runtime/src/metal.rs
+index 59d436a6..4f7785b9 100644
+--- a/rust-star/runtime/src/metal.rs
++++ b/rust-star/runtime/src/metal.rs
+@@ -6945,7 +6945,7 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
+                     || report
+                         .prefill_transformer_layer_gpu_ms
+                         .as_ref()
+-                        .is_none_or(|layers| {
++                        .map_or(true, |layers| {
+                             (values[0] + values[1] - layers[2]).abs() > 1.0e-3
+                                 || (values[2] + values[3] - layers[3]).abs() > 1.0e-3
+                         })
+@@ -6961,7 +6961,7 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
+                     || report
+                         .prefill_representative_stage_gpu_ms
+                         .as_ref()
+-                        .is_none_or(|stages| {
++                        .map_or(true, |stages| {
+                             (values[..5].iter().sum::<f64>() - stages[0]).abs() > 1.0e-3
+                                 || (values[5..].iter().sum::<f64>() - stages[2]).abs() > 1.0e-3
+                         })

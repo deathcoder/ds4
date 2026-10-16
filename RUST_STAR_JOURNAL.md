@@ -18,6 +18,22 @@ Before changing code:
 Journal entries are reverse chronological. Do not edit old entries to change
 history; add a correction and update the current-state summary.
 
+## 2026-10-16 — Source archival and local project retirement
+
+D authorized review and publication of all missing Rust Star source, verification from GitHub, then complete removal of the local Rust Star project. Preserve the existing research history and oracle branches, plus 1,596 previously ignored/untracked source files in rust-star/archive/local-source-20261016. The archive includes the modified oracle-v3 working-tree patch and revision, experimental/rejected source, scripts and notes; it is not new production acceptance.
+
+After remote verification, remove the Rust Star checkout, nested oracle worktrees, generated tensors, binaries and external runtime-target directory. The separate ds4 checkout, its shared Git database and model files remain outside this retirement scope. Large untracked raw evidence will no longer be available locally; historical reports and source remain on GitHub. Source archival does not establish new tests, benchmarks or a packaged release. Restore source by cloning the agent/rust-star-bootstrap branch from deathcoder/ds4; regenerate raw captures as needed.
+
+Cleanup outcome and verified remote hashes are recorded outside the removed checkout in /Users/deathcodevision/dev/cleanup-receipts/rust-star-20261016/.
+
+## 2026-10-02 — User-authorized Rust Star disk cleanup
+
+Removed compiler intermediates and dependency archives from `/Users/deathcodevision/dev/.work/runtime-target` debug/release profiles, preserving executables and examples. No active Rust Star/Cargo/rustc processes or open candidate paths were found before cleanup. Scanned 2,616 large experiment/executable files and replaced 1149 byte-identical copies with independent APFS copy-on-write clones. Every replacement was SHA-256 verified before atomic replacement. Unique binary captures, fixture paths, recorded results, logs, models, source and runnable tools remain intact; no inference or build was run. All three release executable hashes from the September 22 receipt still match.
+
+Observed filesystem free space increased from 17,772,109,824 to 140,513,636,352 bytes (114.31 GiB reclaimed; 130.86 GiB free). Exact removed paths and per-clone hashes: `rust-star/.work/disk-cleanup-20261002.json`. APFS shared blocks mean directory size totals do not represent exclusive physical usage.
+
+Next research milestone remains unchanged below. Cargo regenerates removed compiler files on the next build; all experiment evidence remains available at its original path.
+
 ## 2026-09-12 — Complete direct 32K DwarfStar comparison
 
 - All twelve fresh engine processes pass: two excluded warmups and five fixed
@@ -13729,3 +13745,11 @@ Next:
 
 - Publish the already committed local state from a GitHub-authenticated
   environment, then capture the oracle manifest and baseline on the target Mac.
+
+## 2026-09-22 — User-authorized disposable Cargo cleanup
+
+Removed verified Git-ignored, untracked compiler intermediates, dependency archives and Cargo metadata from runtime-target/release and old msrv-174-c7adfb22 target release/debug profiles. No Cargo/rustc/Rust Star/DwarfStar process or open candidate file before deletion. Retained all three rust-star release executables at original paths, baseline-target intact and all example tools. SHA-256/size unchanged and --help exit 0 for each retained executable. Models, source, fixtures, captures, logs, oracle executables, results and worktrees untouched; no inference or benchmark.
+
+Observed free space increased from 33,829,732,352 to 70,058,176,512 bytes (33.74 GiB increase; 65.25 GiB free). Inventory sizes can double-count Cargo hardlinks; filesystem delta is the reclamation evidence. Exact per-path receipt, retained hashes and before/after df: rust-star/.work/disk-cleanup-20260922.json.
+
+Next: existing research checkpoint and validated executables remain unchanged; Cargo regenerates compiler caches on next intentional build. No new research run authorized or started by cleanup.

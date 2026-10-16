@@ -1,0 +1,105 @@
+diff --git a/rust-star/runtime/src/metal.rs b/rust-star/runtime/src/metal.rs
+index facac323..9cbe8cf3 100644
+--- a/rust-star/runtime/src/metal.rs
++++ b/rust-star/runtime/src/metal.rs
+@@ -6834,7 +6834,7 @@ pub fn write_prefill_decode_frontier_probe_json<W: Write>(
+ }
+ 
+ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport) -> Result<()> {
+-    if !matches!(report.context, 2048 | 32768)
++    if !matches!(report.context, 2048 | 32768 | 131072)
+         || report.gen_tokens != 128
+         || report.gen_steady_tokens != 127
+         || report.model_warm_bytes == 0
+@@ -7002,10 +7002,10 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
+             })
+         || (report.gen_first_ms + report.gen_steady_ms - report.gen_ms).abs() > 1.0e-6
+         || report.prefill_selected_token
+-            != if report.context == 32768 {
+-                85166
+-            } else {
+-                15342
++            != match report.context {
++                131072 => 1110,
++                32768 => 85166,
++                _ => 15342,
+             }
+         || !report.transcript_match
+         || report.generation_correctness_collection
+@@ -7016,16 +7016,18 @@ pub fn write_engine_run_json<W: Write>(output: &mut W, report: &EngineRunReport)
+             "Rust Star engine run has inconsistent measurement metadata",
+         ));
+     }
+-    if report.context == 32768 {
+-        let tokens = decode_u32_fixture(
+-            include_bytes!("../../fixtures/prefill-decode-32768-v5/token-ids.u32le.bin"),
+-            "32K engine transcript",
+-        )?;
+-        if report.final_selected_token != 14
++    if matches!(report.context, 32768 | 131072) {
++        let bytes: &[u8] = if report.context == 131072 {
++            include_bytes!("../../fixtures/measurement-131072-v5/selected.u32le.bin")
++        } else {
++            include_bytes!("../../fixtures/prefill-decode-32768-v5/token-ids.u32le.bin")
++        };
++        let tokens = decode_u32_fixture(bytes, "engine transcript")?;
++        if report.final_selected_token != tokens[128]
+             || report.selected_tokens_checksum != checksum_u32(&tokens[1..])
+         {
+             return Err(Error::invalid(
+-                "32K engine transcript differs from the pinned oracle",
++                "engine transcript differs from the pinned oracle",
+             ));
+         }
+     }
+@@ -61367,6 +61369,50 @@ mod tests {
+         assert!(write_engine_run_json(&mut Vec::new(), &report).is_err());
+     }
+ 
++    fn set_128k_engine_transcript(report: &mut EngineRunReport) {
++        let tokens = decode_u32_fixture(
++            include_bytes!("../../fixtures/measurement-131072-v5/selected.u32le.bin"),
++            "128K engine transcript",
++        )
++        .unwrap();
++        report.context = 131072;
++        report.prefill_selected_token = tokens[0];
++        report.final_selected_token = tokens[128];
++        report.selected_tokens_checksum = checksum_u32(&tokens[1..]);
++    }
++
++    #[test]
++    fn engine_128k_report_requires_the_full_pinned_transcript() {
++        let mut report = engine_run_report();
++        set_128k_engine_transcript(&mut report);
++        let mut output = Vec::new();
++        write_engine_run_json(&mut output, &report).unwrap();
++        assert!(String::from_utf8(output)
++            .unwrap()
++            .contains("\"context\": 131072"));
++        report.selected_tokens_checksum ^= 1;
++        assert!(write_engine_run_json(&mut Vec::new(), &report).is_err());
++        set_128k_engine_transcript(&mut report);
++        report.final_selected_token = 14;
++        assert!(write_engine_run_json(&mut Vec::new(), &report).is_err());
++        set_128k_engine_transcript(&mut report);
++        report.prefill_selected_token = 85166;
++        assert!(write_engine_run_json(&mut Vec::new(), &report).is_err());
++        set_128k_engine_transcript(&mut report);
++        report.context = 98304;
++        assert!(write_engine_run_json(&mut Vec::new(), &report).is_err());
++    }
++
++    #[test]
++    fn retained_128k_writer_validates_both_cycles() {
++        let mut report = retained_engine_run_report();
++        set_128k_engine_transcript(&mut report.first_load);
++        set_128k_engine_transcript(&mut report.retained);
++        write_retained_engine_run_json(&mut Vec::new(), &report).unwrap();
++        report.retained.selected_tokens_checksum ^= 1;
++        assert!(write_retained_engine_run_json(&mut Vec::new(), &report).is_err());
++    }
++
+     #[test]
+     fn writes_stable_engine_run_json() {
+         let mut output = Vec::new();

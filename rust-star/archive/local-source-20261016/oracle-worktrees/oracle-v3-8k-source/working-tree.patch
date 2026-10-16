@@ -1,0 +1,59 @@
+diff --git a/ds4.c b/ds4.c
+index cc881647..5acbdea7 100644
+--- a/ds4.c
++++ b/ds4.c
+@@ -28018,6 +28018,18 @@ static bool metal_graph_encode_layer_attention_batch(
+                     ds4_gpu_tensor_free(sc_view);
+                     ds4_gpu_tensor_free(kv_view);
+                 }
++                if (ok) {
++                    metal_graph_debug_dump_tensor("attn_state_kv",
++                                                  g->layer_attn_state_kv[il],
++                                                  (uint64_t)comp_width * coff * ratio,
++                                                  il,
++                                                  pos0);
++                    metal_graph_debug_dump_tensor("attn_state_score",
++                                                  g->layer_attn_state_score[il],
++                                                  (uint64_t)comp_width * coff * ratio,
++                                                  il,
++                                                  pos0);
++                }
+             }
+             n_comp = g->layer_n_comp[il];
+         }
+@@ -28336,6 +28348,26 @@ static bool metal_graph_encode_layer_attention_batch(
+                                                      pos0,
+                                                      n_tokens,
+                                                      DS4_N_HEAD_DIM) != 0;
++            if (ok) {
++                metal_graph_debug_dump_tensor("mixed_raw_cache",
++                                              g->layer_raw_cache[il],
++                                              (uint64_t)g->raw_cap * DS4_N_HEAD_DIM,
++                                              il,
++                                              pos0);
++                if (metal_graph_attn_comp_cache_is_f16()) {
++                    metal_graph_debug_dump_f16_tensor("mixed_attn_comp_cache",
++                                                      g->layer_attn_comp_cache[il],
++                                                      (uint64_t)n_comp * DS4_N_HEAD_DIM,
++                                                      il,
++                                                      pos0);
++                } else {
++                    metal_graph_debug_dump_tensor("mixed_attn_comp_cache",
++                                                  g->layer_attn_comp_cache[il],
++                                                  (uint64_t)n_comp * DS4_N_HEAD_DIM,
++                                                  il,
++                                                  pos0);
++                }
++            }
+             if (ok && ratio == 4 && n_comp > DS4_N_INDEXER_TOP_K) {
+                 const float index_scale = 1.0f / sqrtf((float)(DS4_N_INDEXER_HEAD_DIM * DS4_N_INDEXER_HEAD));
+                 if (index_stage_profile) {
+@@ -29082,6 +29114,8 @@ static bool metal_graph_encode_layer_ffn_batch(
+     if (ok) {
+         metal_graph_debug_dump_tensor("hc_ffn_pre", metal_graph_batch_ffn_cur(g),
+                                       (uint64_t)n_tokens * DS4_N_EMBD, il, pos0);
++        metal_graph_debug_dump_tensor("hc_ffn_split", metal_graph_batch_hc_split(g),
++                                      (uint64_t)n_tokens * mix_hc, il, pos0);
+     }
+     DS4_METAL_PROFILE_FFN_STAGE("hc_pre");
+     if (ok && !fuse_hc_norm) {

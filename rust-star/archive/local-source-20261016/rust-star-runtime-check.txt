@@ -1,0 +1,1046 @@
+==> formatting contract
+==> platform-independent unit tests
+   Compiling rust-star-runtime v0.1.0 (/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 09s
+     Running unittests src/lib.rs (rust-star/.work/runtime-target/debug/deps/rust_star_runtime-8614c03e7865d628)
+
+running 261 tests
+test metal::tests::embedding_checksum_preserves_float_bits ... ok
+test metal::tests::converts_f16_reference_values_exactly ... ok
+test artifact::tests::rejects_nonfinite_values ... ok
+test artifact::tests::rejects_impossible_frontier_metadata ... ok
+test artifact::tests::preserves_signed_zero_and_lowest_argmax_tie ... ok
+test gguf::tests::rejects_noncanonical_bool_values ... ok
+test artifact::tests::escapes_informational_strings_as_json ... ok
+test gguf::tests::rejects_unaligned_tensor_offsets ... ok
+test gguf::tests::parses_directory_without_reading_payload ... ok
+test gguf::tests::rejects_tensor_ranges_outside_file ... ok
+test metal::tests::ffn_router_fixture_has_target_shapes ... ok
+test metal::tests::attention_read_fixture_has_target_shapes ... ok
+test metal::tests::attention_output_fixture_has_target_shapes ... ok
+test metal::tests::moe_output_fixture_has_target_shapes ... ok
+test metal::tests::prefill_kv_state_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer10_attention_diagnostics_fixture_has_target_shapes ... ok
+test metal::tests::layer3_complete_fixture_has_target_shapes ... ok
+test metal::tests::cold_prefill_fixture_has_target_shape_and_selection ... ok
+test metal::tests::layer2_complete_fixture_has_target_shapes ... ok
+test metal::tests::position127_decoder_fixture_has_target_shapes ... ok
+test metal::tests::layer1_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer12_attention_diagnostics_fixture_has_target_shapes ... ok
+test metal::tests::prefill_hc_ingress_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer11_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_frontier_fixture_has_target_shape_and_selection ... ok
+test metal::tests::prefill_layer10_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer12_compressor_fixture_has_target_shapes ... ok
+test metal::tests::output_head_fixtures_have_target_shapes_and_selection ... ok
+test metal::tests::prefill_layer13_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_attention_output_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer14_attention_diagnostics_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer10_complete_fixture_has_target_shapes ... ok
+test metal::tests::position2_complete_fixtures_have_target_shapes ... ok
+test metal::tests::position3_complete_fixtures_have_target_shapes ... ok
+test metal::tests::prefill_layer11_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer12_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer14_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer15_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_ffn_output_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer16_attention_diagnostics_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer13_complete_fixture_has_target_shapes ... ok
+test metal::tests::layer45_position_advancing_fixtures_have_target_shapes ... ok
+test metal::tests::layer67_position_advancing_fixtures_have_target_shapes ... ok
+test metal::tests::prefill_layer14_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer16_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer15_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer17_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer10_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer16_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer18_attention_diagnostics_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer11_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer12_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer17_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer18_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_attention_read_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer19_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer13_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer14_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer18_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer20_attention_diagnostics_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer1_ingress_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer15_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer19_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer20_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer16_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer17_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer21_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer20_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer22_attention_diagnostics_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer18_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer21_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer19_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer22_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer22_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer20_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer23_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer23_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer24_attention_diagnostics_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer21_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer22_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer24_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer24_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer11_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer10_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer25_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer12_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer23_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer26_attention_diagnostics_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer13_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer22_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer25_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer26_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer26_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer27_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer14_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer15_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer1_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer28_attention_diagnostics_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer27_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer28_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer23_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer16_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer25_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer29_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer28_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer17_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer29_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer26_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer24_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer30_attention_diagnostics_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer2_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer18_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer30_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer19_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer27_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer2_kvnorm_fixture_has_target_shape ... ok
+test metal::tests::prefill_layer30_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer31_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer2_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer28_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer32_attention_diagnostics_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer29_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer20_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer32_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer31_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer32_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer33_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer34_attention_diagnostics_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer21_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer24_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer2_kv_state_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer33_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer34_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer30_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer35_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer34_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer36_attention_diagnostics_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer35_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer31_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer36_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer32_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer36_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer25_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer33_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer37_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer34_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer26_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer27_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer35_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer3_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer37_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer4_attention_diagnostics_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer3_ingress_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer3_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer36_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer4_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer5_attention_diagnostics_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer37_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer4_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer5_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer6_attention_diagnostics_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer28_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer29_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer5_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer6_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer30_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer3_kv_state_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer6_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer7_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer2_attention_fixture_has_target_shape ... ok
+test metal::tests::prefill_layer8_attention_diagnostics_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer31_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer33_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer4_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer32_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer7_complete_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer8_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer9_compressor_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer34_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer35_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer8_complete_fixture_has_target_shapes ... ok
+test metal::tests::projection_fixture_is_finite_and_has_target_shape ... ok
+test metal::tests::prefill_layer5_qkv_fixture_has_target_shapes ... ok
+test metal::tests::retained_decoder_step_fixture_has_target_shapes ... ok
+test metal::tests::retained_sparse_boundary_fixture_has_target_shapes ... ok
+test metal::tests::retained_sparse_multimerge_fixture_has_target_shapes ... ok
+test metal::tests::retained_sparse_topk_schedule_generalizes_merge_passes ... ok
+test metal::tests::rope_kv_store_fixture_has_target_shapes ... ok
+test metal::tests::rounds_raw_cache_values_through_f16_exactly ... ok
+test metal::tests::prefill_layer9_complete_fixture_has_target_shapes ... ok
+test metal::tests::validates_layer0_bench_bounds ... ok
+test metal::tests::prefill_q8_boundary_fixture_has_target_shapes ... ok
+test metal::tests::validates_layers0123_bench_bounds ... ok
+test metal::tests::validates_probe_work_bounds ... ok
+test metal::tests::writes_stable_attention_output_probe_json ... ok
+test metal::tests::writes_stable_attention_setup_probe_json ... ok
+test metal::tests::writes_stable_attention_read_probe_json ... ok
+test metal::tests::writes_stable_closed_loop_decoder_probe_json ... ok
+test metal::tests::writes_stable_decoder_output_probe_json ... ok
+test metal::tests::writes_stable_embedding_probe_json ... ok
+test metal::tests::writes_stable_ffn_router_probe_json ... ok
+test metal::tests::writes_stable_ingress_probe_json ... ok
+test metal::tests::writes_stable_layer0_bench_json ... ok
+test metal::tests::writes_stable_layer0_probe_json ... ok
+test metal::tests::writes_stable_layers01234567_decode_probe_json ... ok
+test metal::tests::sparse_indexed_attention_fixture_has_target_shapes ... ok
+test metal::tests::writes_stable_layers012345_decode_probe_json ... ok
+test metal::tests::writes_stable_layers0123_bench_json ... ok
+test metal::tests::writes_stable_layers0123_chained_probe_json ... ok
+test metal::tests::writes_stable_layers0123_decode_probe_json ... ok
+test metal::tests::writes_stable_layers0123_probe_json ... ok
+test metal::tests::writes_stable_layers012_chained_probe_json ... ok
+test metal::tests::writes_stable_layers012_probe_json ... ok
+test metal::tests::writes_stable_layers01_probe_json ... ok
+test metal::tests::writes_stable_moe_output_probe_json ... ok
+test metal::tests::prefill_layer36_attention_fixture_has_target_shapes ... ok
+test metal::tests::writes_stable_position127_decoder_probe_json ... ok
+test metal::tests::writes_stable_prefill_layer0_boundary_probe_json ... ok
+test metal::tests::writes_stable_layers0_to_42_decode_probe_json ... ok
+test metal::tests::writes_stable_prefill_layers012_compressor_loop_probe_json ... ok
+test metal::tests::writes_stable_prefill_layers012_kv_state_loop_probe_json ... ok
+test metal::tests::writes_stable_prefill_layers012_kvnorm_loop_probe_json ... ok
+test metal::tests::writes_stable_prefill_layers01_boundary_probe_json ... ok
+test metal::tests::writes_stable_prefill_layers01_complete_boundary_probe_json ... ok
+test metal::tests::writes_stable_prefill_layers01_live_kv_chain_probe_json ... ok
+test metal::tests::writes_stable_prefill_layers01_live_kv_loop_probe_json ... ok
+test metal::tests::writes_stable_prefill_layers01_row_coverage_probe_json ... ok
+test metal::tests::writes_stable_prefill_q8_boundary_probe_json ... ok
+test metal::tests::writes_stable_prefill_qkv_boundary_probe_json ... ok
+test metal::tests::writes_stable_probe_json ... ok
+test metal::tests::writes_stable_projection_probe_json ... ok
+test metal::tests::writes_stable_ratio128_compressor_replay_json ... ok
+test metal::tests::writes_stable_retained_decoder_step_probe_json ... ok
+test metal::tests::writes_stable_retained_sparse_boundary_probe_json ... ok
+test metal::tests::writes_stable_retained_sparse_multimerge_probe_json ... ok
+test metal::tests::writes_stable_rope_kv_store_probe_json ... ok
+test metal::tests::writes_stable_sparse_indexed_attention_probe_json ... ok
+test metal::tests::prefill_layers01_previous_tile_fixture_has_target_shapes ... ok
+test target::tests::complete_fixture_passes_and_wrong_quant_fails ... ok
+test target::tests::expected_tensor_names_are_unique_and_cover_all_routed_layers ... ok
+test target::tests::flash_compression_schedule_matches_dwarfstar ... ok
+test metal::tests::writes_stable_cold_prefill_decoder_probe_json ... ok
+test target::tests::q2_recipe_uses_iq2_gate_up_and_q2_down ... ok
+test target::tests::indexer_projection_recipe_is_f16 ... ok
+test metal::tests::writes_stable_prefill_frontier_probe_json ... ok
+test metal::tests::prefill_layer37_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer6_qkv_fixture_has_target_shapes ... ok
+test metal::tests::ratio128_compressor_fixtures_have_target_shapes ... ok
+test metal::tests::prefill_layer7_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer8_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer9_qkv_fixture_has_target_shapes ... ok
+test metal::tests::prefill_qkv_boundary_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer3_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer4_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer5_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer6_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer7_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer8_attention_fixture_has_target_shapes ... ok
+test metal::tests::prefill_layer9_attention_fixture_has_target_shapes ... ok
+test metal::tests::complete_later_layer_registry_has_target_shapes ... ok
+test metal::tests::writes_stable_prefill_layers012_attention_loop_probe_json ... ok
+
+test result: ok. 261 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 24.37s
+
+     Running unittests src/main.rs (rust-star/.work/runtime-target/debug/deps/rust_star-02650e1da6b8ea58)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests rust_star_runtime
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+==> optimized host build
+   Compiling rust-star-runtime v0.1.0 (/Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/runtime)
+    Finished `release` profile [optimized] target(s) in 1m 55s
+==> Metal ownership and dispatch probe
+device: Apple M1 Ultra
+unified memory: true
+recommended working set: 115448725504 bytes
+pipeline: max_threads=1024 setup=47.951 ms compile=2.941 ms
+warmup: wall=2.290 ms gpu=0.014 ms
+roundtrip: 100 dispatches wall=22.778 ms gpu=0.871 ms rate=4390.2 dispatches/s
+batched: 100 dispatches wall=0.680 ms gpu=0.423 ms rate=147058.8 dispatches/s
+batching ratio: 33.497x
+result: Metal dispatch and shared-buffer validation passed
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/metal-dispatch-probe.json
+==> existing Python artifact tests
+test_archive_path_traversal_is_rejected (test_artifact_tools.BundleValidationTests) ... ok
+test_directory_and_archive_validate (test_artifact_tools.BundleValidationTests) ... ok
+test_early_partial_manifest_is_accepted_only_when_requested (test_artifact_tools.BundleValidationTests) ... ok
+test_tampered_artifact_is_rejected (test_artifact_tools.BundleValidationTests) ... ok
+test_c0_exact_including_negative_zero (test_artifact_tools.LogitComparisonTests) ... ok
+test_drift_metrics_and_metadata_mismatch (test_artifact_tools.LogitComparisonTests) ... ok
+test_invalid_argmax_is_rejected (test_artifact_tools.LogitComparisonTests) ... ok
+test_missing_required_metadata_is_rejected (test_artifact_tools.LogitComparisonTests) ... ok
+test_signed_zero_is_not_c0 (test_artifact_tools.LogitComparisonTests) ... ok
+test_csv_is_normalized_without_inventing_kv_bytes (test_dwarfstar_measurement.DwarfStarMeasurementTests) ... ok
+test_csv_rejects_partial_generation (test_dwarfstar_measurement.DwarfStarMeasurementTests) ... ok
+test_invalid_success_csv_is_persisted_as_failure (test_dwarfstar_measurement.DwarfStarMeasurementTests) ... ok
+test_isolated_process_measurement_and_log_redaction (test_dwarfstar_measurement.DwarfStarMeasurementTests) ... ok
+test_cold_prefill_fixture_manifest_and_payload (test_kernel_fixture.KernelFixtureTests) ... ok
+test_compressor_prime_fixtures_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_fixture_shape_tampering_is_rejected (test_kernel_fixture.KernelFixtureTests) ... ok
+test_later_layer_complete_fixtures_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_layer0_attention_output_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_layer0_attention_read_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_layer0_ffn_router_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_layer0_ingress_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_layer0_moe_output_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_layer0_qkv_setup_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_layer0_rope_kv_store_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_layer1_complete_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_layer2_complete_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_layer3_complete_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_position127_decoder_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_position2_complete_fixtures_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_position3_complete_fixtures_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_position4_complete_fixtures_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_prefill_attention_output_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_prefill_attention_read_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_prefill_ffn_output_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_prefill_frontier_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_prefill_hc_ingress_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_prefill_layer1_complete_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_prefill_layer1_ingress_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_prefill_layer2_attention_fixture_manifest_and_payload (test_kernel_fixture.KernelFixtureTests) ... ok
+test_prefill_layer2_kv_state_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_prefill_layer2_kvnorm_fixture_manifest_and_payload (test_kernel_fixture.KernelFixtureTests) ... ok
+test_prefill_layer3_compressor_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_prefill_layer3_ingress_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_prefill_layer3_kv_state_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_prefill_layers01_previous_tile_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_prefill_q8_boundary_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_prefill_qkv_boundary_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_q8_projection_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_ratio128_compressor_fixtures_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_retained_decoder_step_fixture_manifest_and_payloads (test_kernel_fixture.KernelFixtureTests) ... ok
+test_context_order_alternates_by_repetition (test_paired_benchmarks.PairedBenchmarkTests) ... ok
+test_duplicate_and_missing_pairs_are_rejected (test_paired_benchmarks.PairedBenchmarkTests) ... ok
+test_experimental_result_is_not_headline_eligible (test_paired_benchmarks.PairedBenchmarkTests) ... ok
+test_invalid_pair_is_retained_and_excluded (test_paired_benchmarks.PairedBenchmarkTests) ... ok
+test_model_identity_mismatch_is_rejected (test_paired_benchmarks.PairedBenchmarkTests) ... ok
+test_pairwise_ratio_is_aggregated_within_pairs (test_paired_benchmarks.PairedBenchmarkTests) ... ok
+test_wrong_alternating_order_is_rejected (test_paired_benchmarks.PairedBenchmarkTests) ... ok
+test_checkpoint_resume_and_final_export (test_paired_runner.PairedRunnerTests) ... ok
+test_failed_pair_requires_explicit_reason_before_retry (test_paired_runner.PairedRunnerTests) ... ok
+test_finalization_rejects_changed_measurement_evidence (test_paired_runner.PairedRunnerTests) ... ok
+test_plan_is_immutable_after_checkpoint_creation (test_paired_runner.PairedRunnerTests) ... ok
+test_retry_after_completion_preserves_superseded_outputs (test_paired_runner.PairedRunnerTests) ... ok
+
+----------------------------------------------------------------------
+Ran 62 tests in 29.296s
+
+OK
+==> pinned differential fixtures
+VALID dwarfstar-oracle-v1-cold-prefill-pos0: scope=decode-step, operations=1, tensors=1, bytes=517120
+VALID dwarfstar-oracle-v1-decoder-frontier-pos127: scope=decode-step, operations=2, tensors=2, bytes=517632
+VALID dwarfstar-oracle-v1-layer0-pos1-attention-ingress: scope=layer-segment, operations=6, tensors=7, bytes=37056
+VALID dwarfstar-oracle-v1-layer0-pos1-attention-output: scope=decode-step, operations=2, tensors=4, bytes=245760
+VALID dwarfstar-oracle-v1-layer0-pos1-attention-read: scope=decode-step, operations=5, tensors=4, bytes=266240
+VALID dwarfstar-oracle-v1-layer0-pos1-ffn-router: scope=decode-step, operations=7, tensors=11, bytes=100592
+VALID dwarfstar-oracle-v1-layer0-pos1-moe-output: scope=decode-step, operations=4, tensors=11, bytes=229520
+VALID dwarfstar-oracle-v1-layer0-pos2-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer0-pos3-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer0-pos4-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer0-pos1-qkv-setup: scope=layer-segment, operations=3, tensors=6, bytes=159744
+VALID dwarfstar-oracle-v1-layer0-pos1-rope-kv-store: scope=decode-step, operations=3, tensors=7, bytes=401408
+VALID dwarfstar-oracle-v1-layer1-pos1-complete: scope=decode-step, operations=28, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer1-pos2-complete: scope=decode-step, operations=28, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer1-pos3-complete: scope=decode-step, operations=28, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer1-pos4-complete: scope=decode-step, operations=28, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer10-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer10-pos1-complete: scope=decode-step, operations=32, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer10-pos2-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer10-pos3-complete: scope=decode-step, operations=34, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer10-pos4-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer11-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer11-pos1-complete: scope=decode-step, operations=30, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer11-pos2-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer11-pos3-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer11-pos4-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer12-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer12-pos1-complete: scope=decode-step, operations=32, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer12-pos2-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer12-pos3-complete: scope=decode-step, operations=34, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer12-pos4-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer13-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer13-pos1-complete: scope=decode-step, operations=30, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer13-pos2-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer13-pos3-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer13-pos4-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer14-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer14-pos1-complete: scope=decode-step, operations=32, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer14-pos2-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer14-pos3-complete: scope=decode-step, operations=34, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer14-pos4-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer15-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer15-pos1-complete: scope=decode-step, operations=30, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer15-pos2-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer15-pos3-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer15-pos4-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer16-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer16-pos1-complete: scope=decode-step, operations=32, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer16-pos2-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer16-pos3-complete: scope=decode-step, operations=34, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer16-pos4-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer17-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer17-pos1-complete: scope=decode-step, operations=30, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer17-pos2-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer17-pos3-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer17-pos4-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer18-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer18-pos1-complete: scope=decode-step, operations=32, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer18-pos2-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer18-pos3-complete: scope=decode-step, operations=34, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer18-pos4-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer19-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer19-pos1-complete: scope=decode-step, operations=30, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer19-pos2-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer19-pos3-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer19-pos4-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer2-pos1-complete: scope=decode-step, operations=28, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer2-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer2-pos2-complete: scope=decode-step, operations=28, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer2-pos3-complete: scope=decode-step, operations=34, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer2-pos4-complete: scope=decode-step, operations=28, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer20-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer20-pos1-complete: scope=decode-step, operations=32, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer20-pos2-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer20-pos3-complete: scope=decode-step, operations=34, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer20-pos4-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer21-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer21-pos1-complete: scope=decode-step, operations=30, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer21-pos2-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer21-pos3-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer21-pos4-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer22-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer22-pos1-complete: scope=decode-step, operations=32, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer22-pos2-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer22-pos3-complete: scope=decode-step, operations=34, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer22-pos4-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer23-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer23-pos1-complete: scope=decode-step, operations=30, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer23-pos2-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer23-pos3-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer23-pos4-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer24-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer24-pos1-complete: scope=decode-step, operations=32, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer24-pos2-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer24-pos3-complete: scope=decode-step, operations=34, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer24-pos4-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer25-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer25-pos1-complete: scope=decode-step, operations=30, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer25-pos2-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer25-pos3-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer25-pos4-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer26-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer26-pos1-complete: scope=decode-step, operations=32, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer26-pos2-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer26-pos3-complete: scope=decode-step, operations=34, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer26-pos4-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer27-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer27-pos1-complete: scope=decode-step, operations=30, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer27-pos2-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer27-pos3-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer27-pos4-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer28-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer28-pos1-complete: scope=decode-step, operations=32, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer28-pos2-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer28-pos3-complete: scope=decode-step, operations=34, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer28-pos4-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer29-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer29-pos1-complete: scope=decode-step, operations=30, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer29-pos2-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer29-pos3-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer29-pos4-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer3-pos1-complete: scope=decode-step, operations=28, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer3-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer3-pos127-compressor-replay: scope=layer-segment, operations=4, tensors=2, bytes=2099200
+VALID dwarfstar-oracle-v1-layer3-pos2-complete: scope=decode-step, operations=28, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer3-pos3-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer3-pos4-complete: scope=decode-step, operations=28, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer30-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer30-pos1-complete: scope=decode-step, operations=32, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer30-pos2-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer30-pos3-complete: scope=decode-step, operations=34, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer30-pos4-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer31-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer31-pos1-complete: scope=decode-step, operations=30, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer31-pos2-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer31-pos3-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer31-pos4-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer32-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer32-pos1-complete: scope=decode-step, operations=32, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer32-pos2-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer32-pos3-complete: scope=decode-step, operations=34, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer32-pos4-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer33-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer33-pos1-complete: scope=decode-step, operations=30, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer33-pos2-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer33-pos3-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer33-pos4-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer34-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer34-pos1-complete: scope=decode-step, operations=32, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer34-pos2-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer34-pos3-complete: scope=decode-step, operations=34, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer34-pos4-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer35-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer35-pos1-complete: scope=decode-step, operations=30, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer35-pos2-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer35-pos3-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer35-pos4-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer36-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer36-pos1-complete: scope=decode-step, operations=32, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer36-pos2-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer36-pos3-complete: scope=decode-step, operations=34, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer36-pos4-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer37-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer37-pos1-complete: scope=decode-step, operations=30, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer37-pos2-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer37-pos3-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer37-pos4-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer38-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer38-pos1-complete: scope=decode-step, operations=32, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer38-pos2-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer38-pos3-complete: scope=decode-step, operations=34, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer38-pos4-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer39-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer39-pos1-complete: scope=decode-step, operations=30, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer39-pos2-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer39-pos3-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer39-pos4-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer4-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer4-pos1-complete: scope=decode-step, operations=32, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer4-pos2-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer4-pos3-complete: scope=decode-step, operations=34, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer4-pos4-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer40-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer40-pos1-complete: scope=decode-step, operations=32, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer40-pos2-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer40-pos3-complete: scope=decode-step, operations=34, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer40-pos4-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer41-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer41-pos1-complete: scope=decode-step, operations=30, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer41-pos2-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer41-pos3-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer41-pos4-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer42-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer42-pos1-complete: scope=decode-step, operations=32, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer42-pos2-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer42-pos3-complete: scope=decode-step, operations=34, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer42-pos4-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer5-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer5-pos1-complete: scope=decode-step, operations=30, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer5-pos127-compressor-replay: scope=layer-segment, operations=4, tensors=2, bytes=2099200
+VALID dwarfstar-oracle-v1-layer5-pos2-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer5-pos3-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer5-pos4-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer6-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer6-pos1-complete: scope=decode-step, operations=32, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer6-pos2-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer6-pos3-complete: scope=decode-step, operations=34, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer6-pos4-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer7-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer7-pos1-complete: scope=decode-step, operations=30, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer7-pos2-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer7-pos3-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer7-pos4-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer8-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer8-pos1-complete: scope=decode-step, operations=32, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer8-pos2-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer8-pos3-complete: scope=decode-step, operations=34, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer8-pos4-complete: scope=decode-step, operations=32, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer9-pos0-compressor-prime: scope=layer-segment, operations=1, tensors=1, bytes=16384
+VALID dwarfstar-oracle-v1-layer9-pos1-complete: scope=decode-step, operations=30, tensors=33, bytes=741808
+VALID dwarfstar-oracle-v1-layer9-pos2-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer9-pos3-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-layer9-pos4-complete: scope=decode-step, operations=30, tensors=32, bytes=739760
+VALID dwarfstar-oracle-v1-output-head-pos1: scope=decode-step, operations=6, tensors=5, bytes=549920
+VALID dwarfstar-oracle-v1-output-head-pos2: scope=decode-step, operations=6, tensors=5, bytes=549920
+VALID dwarfstar-oracle-v1-output-head-pos3: scope=decode-step, operations=6, tensors=5, bytes=549920
+VALID dwarfstar-oracle-v1-output-head-pos4: scope=decode-step, operations=6, tensors=5, bytes=549920
+VALID dwarfstar-oracle-v1-prefill-attention-output-2048: scope=layer-segment, operations=3, tensors=3, bytes=3670016
+VALID dwarfstar-oracle-v1-prefill-attention-read-2048: scope=layer-segment, operations=5, tensors=3, bytes=12517376
+VALID dwarfstar-oracle-v1-prefill-ffn-output-2048: scope=layer-segment, operations=5, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-frontier-2048: scope=decode-step, operations=2, tensors=3, bytes=1042432
+VALID dwarfstar-oracle-v1-prefill-hc-ingress-2048: scope=layer-segment, operations=5, tensors=3, bytes=1048704
+VALID dwarfstar-oracle-v1-prefill-kv-state-2048: scope=layer-segment, operations=4, tensors=3, bytes=196608
+VALID dwarfstar-oracle-v1-prefill-layer1-complete-2048: scope=layer-segment, operations=9, tensors=21, bytes=26543616
+VALID dwarfstar-oracle-v1-prefill-layer1-ingress-2048: scope=layer-segment, operations=2, tensors=3, bytes=1179648
+VALID dwarfstar-oracle-v1-prefill-layer10-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer10-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer10-compressor-2048: scope=layer-segment, operations=2, tensors=6, bytes=1392640
+VALID dwarfstar-oracle-v1-prefill-layer10-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer11-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer11-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer11-compressor-2048: scope=layer-segment, operations=2, tensors=3, bytes=557056
+VALID dwarfstar-oracle-v1-prefill-layer11-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer12-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer12-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer12-compressor-2048: scope=layer-segment, operations=2, tensors=6, bytes=1392640
+VALID dwarfstar-oracle-v1-prefill-layer12-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer13-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer13-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer13-compressor-2048: scope=layer-segment, operations=2, tensors=3, bytes=557056
+VALID dwarfstar-oracle-v1-prefill-layer13-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer14-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer14-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer14-compressor-2048: scope=layer-segment, operations=2, tensors=6, bytes=1392640
+VALID dwarfstar-oracle-v1-prefill-layer14-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer15-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer15-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer15-compressor-2048: scope=layer-segment, operations=2, tensors=3, bytes=557056
+VALID dwarfstar-oracle-v1-prefill-layer15-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer16-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer16-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer16-compressor-2048: scope=layer-segment, operations=2, tensors=6, bytes=1392640
+VALID dwarfstar-oracle-v1-prefill-layer16-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer17-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer17-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer17-compressor-2048: scope=layer-segment, operations=2, tensors=3, bytes=557056
+VALID dwarfstar-oracle-v1-prefill-layer17-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer18-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer18-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer18-compressor-2048: scope=layer-segment, operations=2, tensors=6, bytes=1392640
+VALID dwarfstar-oracle-v1-prefill-layer18-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer19-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer19-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer19-compressor-2048: scope=layer-segment, operations=2, tensors=3, bytes=557056
+VALID dwarfstar-oracle-v1-prefill-layer19-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer2-attention-2048: scope=layer-segment, operations=4, tensors=1, bytes=33554432
+VALID dwarfstar-oracle-v1-prefill-layer2-complete-2048: scope=layer-segment, operations=5, tensors=11, bytes=7931392
+VALID dwarfstar-oracle-v1-prefill-layer2-compressors-2048: scope=layer-segment, operations=8, tensors=6, bytes=1392640
+VALID dwarfstar-oracle-v1-prefill-layer2-kv-state-2048: scope=layer-segment, operations=2, tensors=2, bytes=8388608
+VALID dwarfstar-oracle-v1-prefill-layer2-kvnorm-2048: scope=layer-segment, operations=1, tensors=1, bytes=4194304
+VALID dwarfstar-oracle-v1-prefill-layer20-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer20-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer20-compressor-2048: scope=layer-segment, operations=2, tensors=6, bytes=1392640
+VALID dwarfstar-oracle-v1-prefill-layer20-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer21-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer21-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer21-compressor-2048: scope=layer-segment, operations=2, tensors=3, bytes=557056
+VALID dwarfstar-oracle-v1-prefill-layer21-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer22-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer22-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer22-compressor-2048: scope=layer-segment, operations=2, tensors=6, bytes=1392640
+VALID dwarfstar-oracle-v1-prefill-layer22-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer23-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer23-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer23-compressor-2048: scope=layer-segment, operations=2, tensors=3, bytes=557056
+VALID dwarfstar-oracle-v1-prefill-layer23-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer24-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer24-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer24-compressor-2048: scope=layer-segment, operations=2, tensors=6, bytes=1392640
+VALID dwarfstar-oracle-v1-prefill-layer24-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer25-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer25-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer25-compressor-2048: scope=layer-segment, operations=2, tensors=3, bytes=557056
+VALID dwarfstar-oracle-v1-prefill-layer25-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer26-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer26-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer26-compressor-2048: scope=layer-segment, operations=2, tensors=6, bytes=1392640
+VALID dwarfstar-oracle-v1-prefill-layer26-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer27-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer27-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer27-compressor-2048: scope=layer-segment, operations=2, tensors=3, bytes=557056
+VALID dwarfstar-oracle-v1-prefill-layer27-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer28-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer28-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer28-compressor-2048: scope=layer-segment, operations=2, tensors=6, bytes=1392640
+VALID dwarfstar-oracle-v1-prefill-layer28-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer29-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer29-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer29-compressor-2048: scope=layer-segment, operations=2, tensors=3, bytes=557056
+VALID dwarfstar-oracle-v1-prefill-layer29-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer3-attention-2048: scope=layer-segment, operations=4, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer3-complete-2048: scope=layer-segment, operations=5, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer3-compressor-2048: scope=layer-segment, operations=3, tensors=3, bytes=557056
+VALID dwarfstar-oracle-v1-prefill-layer3-ingress-2048: scope=layer-segment, operations=2, tensors=3, bytes=1179648
+VALID dwarfstar-oracle-v1-prefill-layer3-kv-state-2048: scope=layer-segment, operations=6, tensors=7, bytes=8781824
+VALID dwarfstar-oracle-v1-prefill-layer30-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer30-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer30-compressor-2048: scope=layer-segment, operations=2, tensors=6, bytes=1392640
+VALID dwarfstar-oracle-v1-prefill-layer30-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer31-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer31-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer31-compressor-2048: scope=layer-segment, operations=2, tensors=3, bytes=557056
+VALID dwarfstar-oracle-v1-prefill-layer31-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer32-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer32-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer32-compressor-2048: scope=layer-segment, operations=2, tensors=6, bytes=1392640
+VALID dwarfstar-oracle-v1-prefill-layer32-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer33-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer33-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer33-compressor-2048: scope=layer-segment, operations=2, tensors=3, bytes=557056
+VALID dwarfstar-oracle-v1-prefill-layer33-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer34-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer34-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer34-compressor-2048: scope=layer-segment, operations=2, tensors=6, bytes=1392640
+VALID dwarfstar-oracle-v1-prefill-layer34-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer35-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer35-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer35-compressor-2048: scope=layer-segment, operations=2, tensors=3, bytes=557056
+VALID dwarfstar-oracle-v1-prefill-layer35-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer36-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer36-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer36-compressor-2048: scope=layer-segment, operations=2, tensors=6, bytes=1392640
+VALID dwarfstar-oracle-v1-prefill-layer36-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer37-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer37-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer37-compressor-2048: scope=layer-segment, operations=2, tensors=3, bytes=557056
+VALID dwarfstar-oracle-v1-prefill-layer37-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer4-attention-2048: scope=layer-segment, operations=4, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer4-complete-2048: scope=layer-segment, operations=5, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer4-compressors-2048: scope=layer-segment, operations=8, tensors=6, bytes=1392640
+VALID dwarfstar-oracle-v1-prefill-layer4-qkv-2048: scope=layer-segment, operations=7, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer5-attention-2048: scope=layer-segment, operations=4, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer5-complete-2048: scope=layer-segment, operations=5, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer5-compressor-2048: scope=layer-segment, operations=3, tensors=3, bytes=557056
+VALID dwarfstar-oracle-v1-prefill-layer5-qkv-2048: scope=layer-segment, operations=7, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer6-attention-2048: scope=layer-segment, operations=4, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer6-complete-2048: scope=layer-segment, operations=5, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer6-compressors-2048: scope=layer-segment, operations=8, tensors=6, bytes=1392640
+VALID dwarfstar-oracle-v1-prefill-layer6-qkv-2048: scope=layer-segment, operations=7, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer7-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer7-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer7-compressor-2048: scope=layer-segment, operations=2, tensors=3, bytes=557056
+VALID dwarfstar-oracle-v1-prefill-layer7-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer8-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer8-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer8-compressor-2048: scope=layer-segment, operations=2, tensors=6, bytes=1392640
+VALID dwarfstar-oracle-v1-prefill-layer8-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layer9-attention-2048: scope=layer-segment, operations=2, tensors=5, bytes=35946496
+VALID dwarfstar-oracle-v1-prefill-layer9-complete-2048: scope=layer-segment, operations=2, tensors=10, bytes=5834240
+VALID dwarfstar-oracle-v1-prefill-layer9-compressor-2048: scope=layer-segment, operations=2, tensors=3, bytes=557056
+VALID dwarfstar-oracle-v1-prefill-layer9-qkv-2048: scope=layer-segment, operations=2, tensors=10, bytes=9961472
+VALID dwarfstar-oracle-v1-prefill-layers01-previous-tile-2048: scope=layer-segment, operations=2, tensors=6, bytes=4326912
+VALID dwarfstar-oracle-v1-prefill-q8-boundary-2048: scope=kernel, operations=2, tensors=3, bytes=2625536
+VALID dwarfstar-oracle-v1-prefill-qkv-boundary-2048: scope=layer-segment, operations=5, tensors=7, bytes=9306112
+VALID dwarfstar-oracle-v1-layer0-pos1-attn-q-a: scope=kernel, operations=1, tensors=2, bytes=20480
+VALID dwarfstar-oracle-v1-retained-decoder-step-pos8195: scope=decode-step, operations=3, tensors=13, bytes=55517184
+VALID dwarfstar-oracle-v1-retained-layer2-pos4099-sparse: scope=layer-segment, operations=38, tensors=47, bytes=3941556
+VALID dwarfstar-oracle-v1-retained-layer2-pos8195-sparse-multimerge: scope=layer-segment, operations=38, tensors=52, bytes=7156916
+VALID dwarfstar-oracle-v1-layer2-pos2051-sparse-indexed-attention: scope=layer-segment, operations=9, tensors=12, bytes=2026244
+VALID dwarfstar-oracle-v1-layer2-pos4099-sparse-indexed-attention: scope=layer-segment, operations=10, tensors=12, bytes=3339012
+==> Rust-writer/Python-reader artifact contract
+C0 PASS: 5 FP32 logits and required metadata are bit-identical
+==> strict target model inspection
+file: /Users/deathcodevision/dev/ds4/gguf/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf
+gguf: v3, 62 metadata keys, 1328 tensors, 86720111488 bytes
+layout: alignment=32 tensor_data_offset=5333824
+target: DeepSeek-V4-Flash-0731 resident imatrix Q2
+model metadata name: DeepSeek V4 Flash
+tensor contract: 1288 required tensors validated, 40 additional tensors
+imatrix entries: 129
+tensor types:
+  f16      359
+  f32      492
+  i32      3
+  iq2_xxs  86
+  q2_k     43
+  q8_0     345
+checkpoint note: metadata name does not assert 0731; this is not a failure because the oracle model SHA-256 is authoritative
+checkpoint identity: pending comparison with the completed oracle-v1 model SHA-256
+result: target shape and Q2 recipe valid
+==> no-copy F16 embedding gather
+kernel: kernel_get_rows_f16 (imported DwarfStar embedding gather)
+tensor: token_embd.weight offset=77928033088 bytes=1059061760
+no-copy view: page_offset=77928022016 buffer_bytes=1059078144 inner_offset=11072 pointer_match=true
+tokens: [0, 1, 17, 64640, 129279], output=20480 FP32 values checksum=4028716204944876325
+dispatch: wall=376.019 ms gpu=0.019 ms
+result: no-copy F16 embedding gather is C0 bit-identical
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/f16-embedding-probe.json
+==> no-copy Q8_0 decode projection
+fixture: dwarfstar-oracle-v1-layer0-pos1-attn-q-a
+kernel: kernel_mul_mv_q8_0_f32 (imported DwarfStar decode matvec)
+tensor: blk.0.attn_q_a.weight offset=79060632640 bytes=4456448
+no-copy view: page_offset=79060631552 buffer_bytes=4472832 inner_offset=1088 pointer_match=true
+activation: 4096 FP32 values checksum=6001855774483604828
+output: 1024 FP32 values checksum=13770952831385691371
+dispatch: 4 simdgroups, 2 rows/group, wall=5.376 ms gpu=0.033 ms
+result: no-copy Q8_0 decode projection matches the DwarfStar fixture bit-for-bit
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/q8-projection-probe.json
+==> exact M1 batched-Q8 prefill arithmetic boundary
+fixture: dwarfstar-oracle-v1-prefill-q8-boundary-2048
+batch: 128 rows through kernel_mul_mm_q8_0_f32, C0 exact
+decode control: final row through kernel_mul_mv_q8_0_f32, C0 exact
+dispatch: [128, 1, 1] threads, [4, 16, 1] groups; batch wall=2.238 ms gpu=0.415 ms
+arithmetic boundary: 1024/1024 final-row values differ, max_abs_error=0.000036240
+scope: isolated layer-0 projection boundary; no full-prefill claim
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/prefill-q8-boundary-probe.json
+fixture: dwarfstar-oracle-v1-prefill-qkv-boundary-2048
+native batch: 32 rows, positions 2016..2047, 5 dispatches, C0 exact
+mapping: 5/5 no-copy model ranges; wall=20.893 ms gpu=1.319 ms
+scope: layer-0 Q/KV setup through Q head RMSNorm/RoPE; no full-prefill claim
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/prefill-qkv-boundary-probe.json
+==> continuous complete M1 layer-0 prefill final tile
+fixtures: dwarfstar-oracle-v1-prefill-hc-ingress-2048, dwarfstar-oracle-v1-prefill-qkv-boundary-2048, dwarfstar-oracle-v1-prefill-kv-state-2048, dwarfstar-oracle-v1-prefill-attention-read-2048, dwarfstar-oracle-v1-prefill-attention-output-2048, dwarfstar-oracle-v1-prefill-ffn-output-2048
+native batch: token IDs at positions 2016..2047 through 43 dispatches, C0 exact
+mapping: 25/25 no-copy model ranges; wall=744.994 ms gpu=702.265 ms
+scope: continuous final layer-0 tile from token IDs through the FFN HC post-state; no full-prefill claim
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/prefill-layer0-boundary-probe.json
+==> direct native M1 layer-0 to layer-1 prefill handoff
+fixtures: dwarfstar-oracle-v1-prefill-ffn-output-2048, dwarfstar-oracle-v1-prefill-layer1-ingress-2048
+native batch: token IDs at positions 2016..2047 through 47 dispatches, C0 exact
+mapping: 30/30 no-copy model ranges; wall=99.016 ms gpu=58.464 ms
+scope: direct layer-0 FFN HC to layer-1 Q-Lora handoff; no complete-layer-1 or full-prefill claim
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/prefill-layers01-boundary-probe.json
+==> continuous complete M1 layers-0/1 prefill final tile
+fixtures: dwarfstar-oracle-v1-prefill-layer1-ingress-2048, dwarfstar-oracle-v1-prefill-layer1-complete-2048
+native batch: token IDs at positions 2016..2047 through 84 dispatches, C0 exact
+mapping: 49/49 no-copy model ranges; wall=774.301 ms gpu=729.566 ms
+scope: direct token-ID through complete layer-1 FFN HC final tile; no full-prefill claim
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/prefill-layers01-complete-boundary-probe.json
+==> arbitrary-position M1 layers-0/1 prefill row coverage
+native coverage: positions 1984..2047 across two complete 32-row layers-0/1 tiles, C0 exact
+previous tile: 49/49 no-copy model ranges; wall=121.281 ms gpu=79.190 ms
+final tile: 49/49 no-copy model ranges; wall=133.097 ms gpu=90.796 ms
+scope: arbitrary-position exact tile replay with captured per-tile KV prefixes; no live inter-tile KV chain or full-prefill claim
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/prefill-layers01-row-coverage-probe.json
+==> persistent live-KV chain across two M1 layers-0/1 prefill tiles
+live KV chain: positions 1984..2047 across two complete 32-row layers-0/1 tiles, C0 exact
+retained state: 2016 rows after tile one, 2048 rows after tile two; one persistent Metal context
+mapping: tile one 49/49 and tile two 49/49 no-copy model ranges
+scope: live layer-0/layer-1 KV append and consume across two command buffers with one inter-tile host wait; no single-command-buffer or full-prefill claim
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/prefill-layers01-live-kv-chain-probe.json
+==> empty-seed full-2K live-KV loop across native M1 layers 0/1
+live KV loop: positions 0..2047 across 64 complete 32-row layers-0/1 schedules
+KV ownership: empty seed -> 2048 retained rows/layer, every accumulated prefix C0 exact
+mapping: every tile preserved 49/49 no-copy model ranges; summed wall=3294.768 ms gpu=3197.781 ms
+scope: exact full-2K layer-0/layer-1 KV chain and exact final tile; non-final full outputs are not all retained, no complete-model-prefill or throughput claim
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/prefill-layers01-live-kv-loop-probe.json
+==> downstream layer-2 KVnorm validation across the full native 2K layers-0/1 loop
+native layer-2 KVnorm loop: positions 0..2047 across 64 complete layers-0/1 schedules
+downstream validation: every live layer-1 output row matched the captured layer-2 KVnorm boundary bit-for-bit
+mapping: every tile preserved 57/57 no-copy model ranges; 90 dispatches/tile; summed wall=3359.251 ms gpu=3266.490 ms
+scope: complete native layers 0/1 plus layer-2 HC ingress and normalized Q/KV projections; no compressed layer-2 attention, complete-model-prefill, or throughput claim
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/prefill-layers012-kvnorm-loop-probe.json
+==> full native layer-2 rotated/finalized KV-state ownership
+native layer-2 KV-state loop: positions 0..2047 across 64 complete layers-0/1 schedules
+layer-2 ownership: empty seed -> 2048 exact KV rows after compressed RoPE and E4M3FN finalization
+mapping: every tile preserved 57/57 no-copy model ranges; 92 dispatches/tile; summed wall=3367.122 ms gpu=3276.426 ms
+scope: complete native layers 0/1 plus exact layer-2 normalized, rotated, and finalized raw KV state; no layer-2 compressor, attention, FFN, complete-model-prefill, or throughput claim
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/prefill-layers012-kv-state-loop-probe.json
+==> paired layer-2 ratio-4 compressors across the full native 2K loop
+native layer-2 paired-compressor loop: positions 0..2047 across 64 complete layers-0/1 schedules
+compressor ownership: empty seed -> 512 exact attention and indexer compressed rows plus exact final recurrent states
+mapping: every tile preserved 65/65 no-copy model ranges; 118 dispatches/regular tile and 122 on the final tail refresh; summed wall=3427.723 ms gpu=3332.242 ms
+scope: complete native layers 0/1 plus exact layer-2 raw KV and paired ratio-4 compressors; no layer-2 mixed attention, FFN, complete-model-prefill, or throughput claim
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/prefill-layers012-compressor-loop-probe.json
+==> exact complete layers 0-37 across the full native 2K loop
+native complete layers 0-37 at 2K: 2048 raw rows + 512 dense layer-2/layer-4/layer-6/layer-8/layer-10/layer-12/layer-14/layer-16/layer-18/layer-20/layer-22/layer-24/layer-26/layer-28/layer-30/layer-32/layer-34/layer-36 compressed rows + 16 layer-3/layer-5/layer-7/layer-9/layer-11/layer-13/layer-15/layer-17/layer-19/layer-21/layer-23/layer-25/layer-27/layer-29/layer-31/layer-33/layer-35/layer-37 compressed rows
+terminal attention/FFN schedule: 2068 dispatches, 1064/1064 no-copy model ranges, wall=18044.576 ms gpu=17293.729 ms
+scope: complete native layers 0-37, including exact paired ratio-4 and ratio-128 compressors, dense mixed attention, biased top-6 routed/shared FFNs, and additive final HC updates at the 2K prompt boundary; no layer-38 prefill, sparse post-prompt top-k, complete-model-prefill, output-logit, or throughput claim
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/prefill-layers012-attention-loop-probe.json
+==> no-copy layer-0 attention ingress
+fixture: dwarfstar-oracle-v1-layer0-pos1-attention-ingress
+token: 201 (layer 0, decode position 1)
+model views: 6/6 preserve the mmap pointer
+six-dispatch chain: wall=36.080 ms gpu=0.120 ms
+result: embedding through Q-A projection matches every pinned DwarfStar boundary bit-for-bit
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/attention-ingress-probe.json
+==> no-copy layer-0 attention projection setup
+fixture: dwarfstar-oracle-v1-layer0-pos1-qkv-setup
+token: 201 (layer 0, decode position 1)
+model views: 10/10 preserve the mmap pointer
+9-dispatch chain: wall=31.775 ms gpu=0.355 ms
+result: embedding through Qraw/KVnorm matches every pinned DwarfStar boundary bit-for-bit
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/attention-setup-probe.json
+==> layer-0 Q/K RoPE and guarded KV-cache store
+fixture: dwarfstar-oracle-v1-layer0-pos1-rope-kv-store
+token: 201 (layer 0, decode position 1)
+model views: 10/10 preserve the mmap pointer
+cache row: 1/3 with both guard rows intact=true
+12-dispatch chain: wall=30.252 ms gpu=0.572 ms
+result: Q/K RoPE, KV FP8 finalization, and the cache-row write match the pinned DwarfStar boundary bit-for-bit
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/rope-kv-store-probe.json
+==> layer-0 raw-cache FlashAttention read
+fixture: dwarfstar-oracle-v1-layer0-pos1-attention-read
+token: 201 (layer 0, decode position 1)
+model views: 11/11 preserve the mmap pointer
+cache: 2 rows read from 3 rows; row 0 preserved=true guard row intact=true
+17-dispatch chain: wall=30.903 ms gpu=0.733 ms
+result: raw-cache FlashAttention and inverse RoPE match the pinned DwarfStar KQv boundary bit-for-bit
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/attention-read-probe.json
+==> layer-0 grouped attention output and HC post-update
+fixture: dwarfstar-oracle-v1-layer0-pos1-attention-output
+token: 201 (layer 0, decode position 1)
+model views: 13/13 preserve the mmap pointer
+projection: 8 groups with rank 1024
+19-dispatch chain: wall=31.995 ms gpu=1.335 ms
+result: grouped attention output and fused HC post-state match the pinned DwarfStar boundaries bit-for-bit
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/attention-output-probe.json
+==> layer-0 FFN HC ingress and hash router
+fixture: dwarfstar-oracle-v1-layer0-pos1-ffn-router
+token: 201 (layer 0, decode position 1)
+model views: 6/6 preserve the mmap pointer
+selected experts: [25, 174, 215, 58, 48, 60]
+7-dispatch continuation: wall=14.173 ms gpu=0.112 ms
+result: FFN HC ingress, router logits/probabilities, top-k, and scaled weights match DwarfStar bit-for-bit
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/ffn-router-probe.json
+==> layer-0 routed/shared experts and FFN HC post-update
+fixture: dwarfstar-oracle-v1-layer0-pos1-moe-output
+token: 201 (layer 0, decode position 1)
+model views: 6/6 preserve the mmap pointer
+selected experts: [25, 174, 215, 58, 48, 60]
+4-dispatch continuation: wall=65.533 ms gpu=0.556 ms
+result: routed and shared experts plus the FFN HC post-state match DwarfStar bit-for-bit
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/moe-output-probe.json
+==> continuous complete layer-0 command chain
+fixture: dwarfstar-oracle-v1-layer0-pos1-complete
+token: 201 (complete layer 0, decode position 1)
+model views: 25/25 preserve the mmap pointer
+selected experts: [25, 174, 215, 58, 48, 60]
+30 dispatches in 1 command buffer: wall=50.365 ms gpu=22.689 ms
+result: the continuous attention, router, expert, and HC-state chain matches every pinned DwarfStar boundary bit-for-bit
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/layer0-probe.json
+==> persistent layers 0-3 with direct HC-state handoffs and per-layer KV caches
+continuous layers: 0 -> 1 -> 2 -> 3
+layer 0: 30 dispatches, experts [25, 174, 215, 58, 48, 60], wall=52.643 ms gpu=23.395 ms, C0 exact
+layer 1: 28 dispatches, experts [228, 208, 35, 27, 113, 12], wall=29.815 ms gpu=28.477 ms, C0 exact
+layer 2: 36 dispatches, experts [8, 188, 195, 75, 96, 176], wall=53.965 ms gpu=52.320 ms, C0 exact
+layer 3: 32 dispatches, experts [1, 58, 68, 240, 20, 24], wall=32.051 ms gpu=30.537 ms, C0 exact
+ownership: 4 retained per-layer KV caches; direct HC handoffs across 4 command buffers
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/layers0123-probe.json
+==> chained layers 0-3 with one tail wait
+chained layers: 0 -> 1 -> 2 -> 3
+layer 0: 30 dispatches, experts [25, 174, 215, 58, 48, 60], gpu=24.560 ms, C0 exact
+layer 1: 28 dispatches, experts [228, 208, 35, 27, 113, 12], gpu=21.125 ms, C0 exact
+layer 2: 36 dispatches, experts [8, 188, 195, 75, 96, 176], gpu=21.467 ms, C0 exact
+layer 3: 32 dispatches, experts [1, 58, 68, 240, 20, 24], gpu=21.036 ms, C0 exact
+scheduler: 4 command buffers, 1 tail wait, wall=117.038 ms summed_gpu=88.187 ms
+ownership: 4 retained per-layer KV caches; direct HC handoffs
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/layers0123-chained-probe.json
+==> position-advancing layers 0-3 with persistent per-layer KV caches
+position-advancing layers: 0 -> 1 -> 2 -> 3
+position 1 token 201: 2 cache rows/layer, wall=109.096 ms summed_gpu=80.040 ms, C0 exact
+position 2 token 361: 3 cache rows/layer, wall=7.145 ms summed_gpu=6.300 ms, C0 exact
+position 3 token 1915: 4 cache rows/layer, wall=7.318 ms summed_gpu=6.474 ms, C0 exact
+ownership: 4 retained per-layer KV caches; 16384-element final HC output handoff
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/layers0123-decode-probe.json
+==> position-advancing layers 0-5 with generalized compressor ownership
+position-advancing layers: 0 -> 1 -> 2 -> 3 -> 4 -> 5
+position 1 token 201: 2 cache rows/layer, wall=202.160 ms summed_gpu=171.122 ms, C0 exact
+position 2 token 361: 3 cache rows/layer, wall=10.390 ms summed_gpu=9.513 ms, C0 exact
+position 3 token 1915: 4 cache rows/layer, wall=10.699 ms summed_gpu=9.782 ms, C0 exact
+ownership: 6 retained per-layer KV caches; 16384-element final HC output handoff
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/layers012345-decode-probe.json
+==> position-advancing layers 0-7 with generalized compressor ownership
+position-advancing layers: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
+position 1 token 201: 2 cache rows/layer, wall=510.795 ms summed_gpu=482.031 ms, C0 exact
+position 2 token 361: 3 cache rows/layer, wall=13.754 ms summed_gpu=12.731 ms, C0 exact
+position 3 token 1915: 4 cache rows/layer, wall=10.766 ms summed_gpu=9.825 ms, C0 exact
+ownership: 8 retained per-layer KV caches; 16384-element final HC output handoff
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/layers01234567-decode-probe.json
+==> position-advancing layers 0-42 with generalized compressor ownership
+position-advancing layers: 0 -> ... -> 42
+position 1 token 201: 2 cache rows/layer, wall=9468.882 ms summed_gpu=9069.241 ms, C0 exact
+position 2 token 361: 3 cache rows/layer, wall=741.406 ms summed_gpu=729.542 ms, C0 exact
+position 3 token 1915: 4 cache rows/layer, wall=50.992 ms summed_gpu=48.581 ms, C0 exact
+ownership: 43 retained per-layer KV caches; 16384-element final HC output handoff
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/layers0-42-decode-probe.json
+==> exact decoder output head with full logits and greedy selection
+decoder output boundary: transformer layers 0 -> 42, output head, full logits
+position 1 input token 201 -> selected token 361: 129280 logits, C0 exact
+position 2 input token 361 -> selected token 1915: 129280 logits, C0 exact
+position 3 input token 1915 -> selected token 262: 129280 logits, C0 exact
+position 4 input token 262 -> selected token 1554: 129280 logits, C0 exact
+schedule: 44 command buffers and 2 host waits per correctness step; closed-loop sampling is not yet enabled
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/decoder-output-probe.json
+==> C0 closed-loop decoder and readback-free timed diagnostic
+closed-loop decoder: bootstrap token 201 -> generated 361, 1915, 262, 1554
+C0: all 43 transformer layers and 129280 logits/position are bit-identical
+timed diagnostic: 21.517 tok/s complete, 21.607 tok/s steady; correctness readback excluded
+paired protocol: ineligible captured-state four-position control
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/closed-loop-decoder-probe.json
+==> integrated position-127 closed-loop decoder frontier
+position-127 decoder frontier: 128 committed oracle tokens, final token 33148
+C0: final full logits and integrated layer-3/layer-5 ratio-128 rows are bit-identical
+diagnostic execution: 19.113 evaluated positions/s over 127 positions
+paired protocol: ineligible captured-state position-127 control
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/position127-decoder-probe.json
+==> cold one-token prefill and integrated position-127 decoder
+cold prefill: prompt token 36662 -> first committed token 201, full logits C0 exact
+closed loop: 128 committed oracle tokens, final token 33148
+diagnostic execution: prefill+first selection 809.381 ms; decode 21.643 positions/s
+paired protocol: ineligible until native batched prefill and sparse indexed decode
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/cold-prefill-decoder-probe.json
+==> 2K sequential frontier and batched-prefill boundary
+2K sequential initialization: 2048 canonical tokens -> token 15342, decode-replay logits C0 exact
+diagnostic execution: 22.130 tokens/s over 92544.759 ms
+cache ownership: 128 raw ring rows, 514 ratio-4 compressed rows per layer
+batched-prefill boundary: 129280 logits differ, max absolute error 2.325326
+paired protocol: ineligible until native batched prefill and sparse indexed decode
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/prefill-frontier-probe.json
+==> bounded position-127 ratio-128 compressor replay
+ratio-128 compressor activation replay: layers 3 and 5
+layer 3: 128 oracle activation rows, 263 dispatches, wall=23.956 ms gpu=5.208 ms, position-127 row C0 exact
+layer 5: 128 oracle activation rows, 263 dispatches, wall=5.988 ms gpu=5.281 ms, position-127 row C0 exact
+boundary: 128 externally supplied attn_norm rows; sampling=false; full decoder=false
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/ratio128-compressor-replay-probe.json
+==> diagnostic fixed-top-512 sparse indexed attention
+layer-2 position 4099: 1025 compressed rows -> exact top-512, 12-split indexed attention, C0 exact
+mapping: 3/3 mmap-backed model ranges preserve pointer identity; 11 dispatches
+scope: pinned default threshold 1024 reached at its first sparse row count 1025; the 513-row override also passed as an independent control
+claims: complete-decode=false logits=false throughput=false
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/sparse-indexed-attention-probe.json
+==> retained layer-2 production sparse boundary
+retained layer 2 position 4099: seeded 1024 prior compressed rows, emitted row 1025, and matched 16 tensors by bit pattern
+mapping: 35/35 mmap-backed model ranges preserve pointer identity; 54 dispatches
+claims: retained-layer=true complete-layer=false complete-decoder=false logits=false throughput=false
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/retained-sparse-boundary-probe.json
+==> retained layer-2 repeated sparse merge boundary
+retained layer 2 position 8195: 3 sort blocks, 2 merge passes, row 2049, and 44 exact tensors
+execution: layers 0-2, 85/85 mmap-backed model ranges preserve pointer identity, 113 total dispatches; layer-2 top-k workspace width 1025
+claims: retained-layer=true repeated-merge=true complete-layer=true preceding-layers=true preceding-history-seeded=true complete-decoder=false logits=false throughput=false
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/retained-sparse-multimerge-probe.json
+==> retained full position-8195 decoder step and logits
+retained position 8195: executed 43 layers and selected token 35597 from exact full logits
+mapping: 1370/1370 mmap-backed model ranges preserve pointer identity; 1813 transformer dispatches
+claims: complete-decoder-step=true logits=true seeded-history=true native-prefill=false throughput=false
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/retained-decoder-step-probe.json
+==> repeated layers 0-3 with setup and correctness readback outside timing
+execution: 5 warmup + 20 measured four-layer chains; 4 command buffers and 1 tail wait per iteration
+steady state: wall median=4.231 ms MAD=0.017 ms; summed GPU median=3.781 ms MAD=0.018 ms
+result: final post-measurement readback matched all four pinned DwarfStar layers bit-for-bit
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/layers0123-bench.json
+==> persistent layer-0 steady-state execution
+fixture: dwarfstar-oracle-v1-layer0-pos1-complete
+persistent setup: 25/25 model views preserve the mmap pointer
+execution: 10 warmup + 30 measured iterations; 30 dispatches in 1 command buffer per iteration
+steady state: wall median=1.595 ms MAD=0.091 ms; gpu median=1.300 ms MAD=0.019 ms
+result: every measured iteration was bit-identical and the final output matches the pinned DwarfStar layer
+json: /Users/deathcodevision/dev/ds4-rust-star-bootstrap/rust-star/.work/runtime-target/layer0-bench.json
+==> Rust Star host-runtime checks passed

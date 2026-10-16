@@ -1,0 +1,287 @@
+--- a/rust-star/runtime/src/metal_shim.h
++++ b/rust-star/runtime/src/metal_shim.h
+@@ -475,6 +475,8 @@
+     uint32_t layer3_compressed_kv_rows;
+     double wall_ms;
+     double gpu_ms;
++    uint32_t last_completed_layer;
++    uint32_t indexer_dispatches;
+ } rust_star_metal_prefill_layer2_attention_result;
+ 
+ typedef struct rust_star_metal_prefill_layer_outputs {
+@@ -1889,6 +1891,7 @@
+     float *layer42_shared_out_final_tile,
+     uint32_t prefill_rows,
+     uint32_t collect_outputs,
++    uint32_t last_layer,
+     rust_star_metal_prefill_layer2_attention_result *result,
+     char *error,
+     size_t error_bytes);
+--- a/rust-star/runtime/src/metal_shim.m
++++ b/rust-star/runtime/src/metal_shim.m
+@@ -8097,10 +8097,14 @@
+     float *layer42_shared_out_final_tile,
+     uint32_t prefill_rows,
+     uint32_t collect_outputs,
++    uint32_t last_layer,
+     rust_star_metal_prefill_layer2_attention_result *result,
+     char *error,
+     size_t error_bytes)
+ {
++    if ((last_layer != 2u && last_layer != 42u) ||
++        (last_layer == 2u && (prefill_rows != 4096u || collect_outputs)))
++        return fail_with_message(error, error_bytes, @"invalid native prefill completion scope");
+     if (!opaque_context || !model_mapping || !weights || !result ||
+         (collect_outputs && (!attention_output ||
+         !after_attention_hc || !after_ffn_hc || !ffn_cur_final_tile ||
+@@ -18145,6 +18149,10 @@
+         if (!command || !encoder) return fail_with_message(error, error_bytes,
+             @"failed to create prefill layer-2 attention command");
+         const BOOL prefill_layer_profiling = context.prefillLayerProfiling;
++        if (last_layer == 2u && prefill_layer_profiling) {
++            [encoder endEncoding];
++            return fail_with_message(error, error_bytes, @"bootstrap scope uses outer stage profiling");
++        }
+         const double prefill_profile_wall_start = monotonic_ms();
+         double prefill_profile_gpu_ms = 0.0;
+         double prefill_profile_current_layer_gpu_ms = 0.0;
+@@ -18233,6 +18241,7 @@
+         [encoder dispatchThreadgroups:MTLSizeMake(n_head,rows,1)
+              threadsPerThreadgroup:MTLSizeMake(128,1,1)];
+ 
++        uint32_t layer2_indexer_dispatches = 0u;
+         uint32_t compressed_elements = compressed_rows*head_dim;
+         if (rows == 4096u) {
+             [encoder setComputePipelineState:context.f16AlignedPrefillPipeline];
+@@ -18290,9 +18299,10 @@
+                      (compressed_rows+31u)/32u,(rows+7u)/8u,1)
+                  threadsPerThreadgroup:MTLSizeMake(32,4,1)];
+ 
+-            if (!encode_indexer_topk(context, encoder,
+-                    layer2_indexer_score_buffer, layer2_indexer_topk_buffer,
+-                    layer2_topk_args, error, error_bytes)) {
++            layer2_indexer_dispatches = encode_indexer_topk(context, encoder,
++                layer2_indexer_score_buffer, layer2_indexer_topk_buffer,
++                layer2_topk_args, error, error_bytes);
++            if (!layer2_indexer_dispatches) {
+                 [encoder endEncoding];
+                 return 0;
+             }
+@@ -18591,6 +18601,34 @@
+         [encoder setBuffer:after_ffn_hc_buffer offset:0 atIndex:6];
+         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
+              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++
++        /* Long prefill rebuilds layers 3--42 with its accepted prefix schedule.
++         * Retain only the completed layer-2 HC here; no partial output head is run. */
++        if (last_layer == 2u) {
++            [encoder endEncoding];
++            const double bootstrap_wall_start = monotonic_ms();
++            [command commit];
++            if (!command_succeeded(command, error, error_bytes)) return 0;
++            context.prefillLayer3InputHc = after_ffn_hc_buffer;
++            uint32_t pointer_matches = 0u;
++            for (uint32_t index = 0; index < 1216u; index++)
++                pointer_matches += matches[index] ? 1u : 0u;
++            pointer_matches += layer2_indexer_matches[0] ? 1u : 0u;
++            pointer_matches += layer2_indexer_matches[1] ? 1u : 0u;
++            result->rows = rows;
++            result->raw_kv_rows = raw_rows;
++            result->compressed_kv_rows = compressed_rows;
++            result->dispatches = 36u + layer2_indexer_dispatches;
++            /* Later-layer views are still wrapped by the shared setup above. */
++            result->wrapped_model_ranges = 1218u;
++            result->pointer_matches = pointer_matches;
++            result->layer3_compressed_kv_rows = 0u;
++            result->wall_ms = monotonic_ms()-bootstrap_wall_start;
++            result->gpu_ms = gpu_elapsed_ms(command);
++            result->last_completed_layer = 2u;
++            result->indexer_dispatches = layer2_indexer_dispatches;
++            return 1;
++        }
+ 
+         RUST_STAR_PREFILL_LAYER_BOUNDARY(1u);
+         [encoder setComputePipelineState:context.rmsNormF32Pipeline];
+@@ -40792,6 +40830,8 @@
+         result->raw_kv_rows = raw_rows;
+         result->compressed_kv_rows = compressed_rows;
+         result->dispatches = rows == 4096u ? 2396u : 2391u;
++        result->last_completed_layer = 42u;
++        result->indexer_dispatches = layer2_indexer_dispatches;
+         result->wrapped_model_ranges = rows == 4096u ? 1218u : 1216u;
+         result->pointer_matches = pointer_matches;
+         result->layer3_compressed_kv_rows = layer3_compressed_rows;
+--- a/rust-star/runtime/src/metal.rs
++++ b/rust-star/runtime/src/metal.rs
+@@ -22408,6 +22408,8 @@
+         layer3_compressed_kv_rows: u32,
+         wall_ms: f64,
+         gpu_ms: f64,
++        last_completed_layer: u32,
++        indexer_dispatches: u32,
+     }
+ 
+     #[repr(C)]
+@@ -24100,6 +24102,7 @@
+             layer42_shared_out_final_tile: *mut f32,
+             prefill_rows: u32,
+             collect_outputs: u32,
++            last_layer: u32,
+             result: *mut RawPrefillLayer2AttentionResult,
+             error: *mut c_char,
+             error_bytes: usize,
+@@ -28751,7 +28754,37 @@
+         )
+     }
+ 
++    #[derive(Clone, Copy, PartialEq, Eq)]
++    #[repr(u32)]
++    enum NativePrefillScope {
++        Bootstrap012 = 2,
++        Complete = 42,
++    }
++
+     fn run_prefill_layers012_attention_loop_with_context(
++        model: &MappedModel, context: Context, context_setup_ms: f64,
++        collect_outputs: bool, profile_layers: bool, prefill_rows: u32,
++        tokens: Option<&[u32]>,
++    ) -> Result<(Context, Option<PrefillLayers012AttentionLoopProbeReport>, u32, NativePrefillTiming)> {
++        let (context, report, selected, timing) = run_prefill_layers012_attention_loop_with_scope(
++            model, context, context_setup_ms, collect_outputs, profile_layers,
++            prefill_rows, tokens, NativePrefillScope::Complete)?;
++        Ok((context, report, selected.ok_or_else(|| Error::invalid("complete prefill omitted selection"))?, timing))
++    }
++
++    fn run_long_prefill_initial_bootstrap(
++        model: &MappedModel, context: Context, context_setup_ms: f64, tokens: &[u32],
++    ) -> Result<(Context, NativePrefillTiming)> {
++        let (context, report, selected, timing) = run_prefill_layers012_attention_loop_with_scope(
++            model, context, context_setup_ms, false, false, 4096,
++            Some(tokens), NativePrefillScope::Bootstrap012)?;
++        if report.is_some() || selected.is_some() {
++            return Err(Error::invalid("partial bootstrap unexpectedly produced a model output"));
++        }
++        Ok((context, timing))
++    }
++
++    fn run_prefill_layers012_attention_loop_with_scope(
+         model: &MappedModel,
+         context: Context,
+         context_setup_ms: f64,
+@@ -28759,12 +28792,17 @@
+         profile_layers: bool,
+         prefill_rows: u32,
+         tokens: Option<&[u32]>,
++        scope: NativePrefillScope,
+     ) -> Result<(
+         Context,
+         Option<PrefillLayers012AttentionLoopProbeReport>,
+-        u32,
++        Option<u32>,
+         NativePrefillTiming,
+     )> {
++        let bootstrap = scope == NativePrefillScope::Bootstrap012;
++        if bootstrap && (prefill_rows != 4096 || collect_outputs || profile_layers) {
++            return Err(Error::invalid("invalid initial bootstrap scope"));
++        }
+         if profile_layers {
+             context.enable_prefill_layer_profiling()?;
+         }
+@@ -36255,6 +36293,7 @@
+                 actual_layer42_shared_out.as_mut_ptr(),
+                 prefill_rows,
+                 u32::from(collect_outputs),
++                scope as u32,
+                 &mut raw,
+                 error.as_mut_ptr(),
+                 error.len(),
+@@ -36266,12 +36305,20 @@
+                 error_text(&error)
+             )));
+         }
+-        let expected_dispatches = if prefill_rows == 4096 { 2396 } else { 2391 };
++        let expected_dispatches = if bootstrap {
++            36 + raw.indexer_dispatches
++        } else if prefill_rows == 4096 { 2396 } else { 2391 };
++        let valid_indexer_count = if prefill_rows == 4096 {
++            // One block sort plus at most ten merges for 1024 input columns.
++            (1..=11).contains(&raw.indexer_dispatches)
++        } else { raw.indexer_dispatches == 0 };
+         let expected_model_ranges = if prefill_rows == 4096 { 1218 } else { 1216 };
+         if raw.rows != prefill_rows
+             || raw.raw_kv_rows != prefill_rows
+             || raw.compressed_kv_rows != prefill_rows / 4
+-            || raw.layer3_compressed_kv_rows != prefill_rows / 128
++            || raw.last_completed_layer != scope as u32
++            || !valid_indexer_count
++            || raw.layer3_compressed_kv_rows != if bootstrap { 0 } else { prefill_rows / 128 }
+             || raw.dispatches != expected_dispatches
+             || raw.wrapped_model_ranges != expected_model_ranges
+             || raw.pointer_matches != expected_model_ranges
+@@ -36286,6 +36333,11 @@
+         }
+         timing.transformer_setup_ms =
+             (transformer_started.elapsed().as_secs_f64() * 1000.0 - raw.wall_ms).max(0.0);
++        if bootstrap {
++            timing.transformer_wall_ms = raw.wall_ms;
++            timing.transformer_gpu_ms = raw.gpu_ms;
++            return Ok((context, None, None, timing));
++        }
+         if !collect_outputs {
+             let output_head_setup_started = Instant::now();
+             let output_head = PreparedOutputHead::new(model)?;
+@@ -36305,7 +36357,7 @@
+             }
+             timing.output_head_wall_ms = output_head_started.elapsed().as_secs_f64() * 1000.0;
+             timing.output_head_gpu_ms = output_head_gpu_ms;
+-            return Ok((context, None, selected_token, timing));
++            return Ok((context, None, Some(selected_token), timing));
+         }
+         for (label, actual, expected) in [
+             (
+@@ -44308,7 +44360,7 @@
+                 layer42_after_ffn_hc_checksum: checksum_f32(&actual_layer42_after_ffn_hc),
+                 output_head,
+             }),
+-            selected_token,
++            Some(selected_token),
+             timing,
+         ))
+     }
+--- a/rust-star/runtime/src/long_prefill.rs
++++ b/rust-star/runtime/src/long_prefill.rs
+@@ -805,19 +805,12 @@
+         ..Default::default()
+     };
+     let stage_start = profile.start();
+-    let (context, diagnostic, _, mut timing) = run_prefill_layers012_attention_loop_with_context(
+-        model,
+-        context,
+-        context_ms,
+-        false,
+-        false,
+-        4096,
+-        Some(&tokens),
+-    )?;
++    let (context, mut timing) =
++        run_long_prefill_initial_bootstrap(model, context, context_ms, &tokens)?;
+     profile.record(
+         0,
+         0,
+-        42,
++        2,
+         "initial_bootstrap",
+         stage_start,
+         (0.0, 0.0),
+@@ -826,11 +819,6 @@
+             timing.tile_gpu_ms + timing.transformer_gpu_ms,
+         ),
+     );
+-    if diagnostic.is_some() {
+-        return Err(Error::invalid(
+-            "long-prefill prefix unexpectedly collected diagnostics",
+-        ));
+-    }
+     if collect_checks {
+         eprintln!("rust-star: native 4096-token bootstrap ready for exact prefix rebuild");
+     }

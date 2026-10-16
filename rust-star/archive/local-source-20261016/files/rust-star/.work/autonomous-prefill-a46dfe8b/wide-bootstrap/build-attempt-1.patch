@@ -1,0 +1,193 @@
+diff --git a/rust-star/runtime/src/long_prefill.rs b/rust-star/runtime/src/long_prefill.rs
+index ba7438cf..c9ed6a96 100644
+--- a/rust-star/runtime/src/long_prefill.rs
++++ b/rust-star/runtime/src/long_prefill.rs
+@@ -1085,13 +1085,17 @@ fn run_long_prefill_with_reference(
+             return Err(Error::invalid(error_text(&error)));
+         }
+         let stage_start = profile.start();
+-        let (_, bootstrap_timing) = run_prefill_layers012_compressor_loop_probe_in_context(
++        // Only the validated lower-context native continuation uses a 4K
++        // bootstrap batch. Prefix, legacy callers and larger frontiers keep 64.
++        let bootstrap_tile_rows = if frontier <= 32768 { 4096 } else { 64 };
++        let (_, bootstrap_timing) = run_prefill_layers012_compressor_loop_with_tile_rows(
+             model,
+             &context,
+             false,
+             start,
+             end,
+             Some(&tokens[..end as usize]),
++            bootstrap_tile_rows,
+         )?;
+         profile.record(
+             start,
+diff --git a/rust-star/runtime/src/metal.rs b/rust-star/runtime/src/metal.rs
+index 59d436a6..84290f17 100644
+--- a/rust-star/runtime/src/metal.rs
++++ b/rust-star/runtime/src/metal.rs
+@@ -26330,7 +26330,17 @@ mod imp {
+                 "prefill layer-2 compressors require retained layer-2 KV state",
+             ));
+         }
+-        if rows != 32 && rows != 64 {
++        let native_wide = rows == 4096
++            && !collect_outputs
++            && complete_layer1
++            && include_layer2_compressors
++            && kv_state_mode == 2
++            && shared_context.is_some()
++            && token_source.is_some()
++            && position_start > 0
++            && prefill_rows <= 32768
++            && position_start.checked_add(rows) == Some(prefill_rows);
++        if rows != 32 && rows != 64 && !native_wide {
+             return Err(Error::invalid("invalid prefill boundary tile width"));
+         }
+         if (prefill_rows != 2048
+@@ -27964,15 +27974,37 @@ mod imp {
+     ) -> Result<(
+         Option<PrefillLayers012CompressorLoopProbeReport>,
+         NativePrefillTiming,
++    )> {
++        let tile_rows = if collect_outputs { 32 } else { 64 };
++        run_prefill_layers012_compressor_loop_with_tile_rows(
++            model,
++            context,
++            collect_outputs,
++            position_begin,
++            prefill_rows,
++            tokens,
++            tile_rows,
++        )
++    }
++
++    fn run_prefill_layers012_compressor_loop_with_tile_rows(
++        model: &MappedModel,
++        context: &Context,
++        collect_outputs: bool,
++        position_begin: u32,
++        prefill_rows: u32,
++        tokens: Option<&[u32]>,
++        tile_rows: usize,
++    ) -> Result<(
++        Option<PrefillLayers012CompressorLoopProbeReport>,
++        NativePrefillTiming,
+     )> {
+         let bootstrap_started = Instant::now();
+-        const DIAGNOSTIC_TILE_ROWS: usize = 32;
+-        const PRODUCTION_TILE_ROWS: usize = 64;
+-        let tile_rows = if collect_outputs {
+-            DIAGNOSTIC_TILE_ROWS
+-        } else {
+-            PRODUCTION_TILE_ROWS
+-        };
++        if (collect_outputs && tile_rows != 32)
++            || (!collect_outputs && tile_rows != 64 && tile_rows != 4096)
++        {
++            return Err(Error::invalid("invalid compressor loop tile width"));
++        }
+         if position_begin > prefill_rows || position_begin % tile_rows as u32 != 0 {
+             return Err(Error::invalid(
+                 "prefill compressor loop has an invalid starting position",
+diff --git a/rust-star/runtime/src/metal_shim.m b/rust-star/runtime/src/metal_shim.m
+index 55e654e3..1291c608 100644
+--- a/rust-star/runtime/src/metal_shim.m
++++ b/rust-star/runtime/src/metal_shim.m
+@@ -4666,7 +4666,12 @@ int rust_star_metal_run_prefill_layer0_boundary(
+         return fail_with_message(error, error_bytes,
+             @"prefill complete layer-1 boundary received a null fixture/output pointer");
+     }
+-    if (n_vocab != 129280u || (rows != 32u && rows != 64u) ||
++    const BOOL native_wide_bootstrap = rows == 4096u && !collect_outputs &&
++        complete_layer1 && continue_layer2_compressors && kv_state_mode == 2u &&
++        position_start > 0u && prefill_rows <= 32768u &&
++        (uint64_t)position_start + rows == prefill_rows;
++    if (n_vocab != 129280u ||
++        (rows != 32u && rows != 64u && !native_wide_bootstrap) ||
+         (prefill_rows != 2048u && (prefill_rows < 4096u ||
+          prefill_rows > 262144u || prefill_rows%4096u != 0u)) ||
+         prefill_rows < rows || prefill_rows % rows != 0u ||
+@@ -4678,6 +4683,11 @@ int rust_star_metal_run_prefill_layer0_boundary(
+ 
+     @autoreleasepool {
+         RustStarMetalContext *context = (__bridge RustStarMetalContext *)opaque_context;
++        if (native_wide_bootstrap && (!context.prefillLayerChunkStart ||
++            context.prefillLayerChunkStart.unsignedIntValue != position_start)) {
++            return fail_with_message(error, error_bytes,
++                @"wide bootstrap requires the active native continuation chunk");
++        }
+         const BOOL retain_kv_state = kv_state_mode == 1u;
+         const BOOL consume_kv_state = kv_state_mode == 2u;
+         const BOOL batch_production_tiles = !collect_outputs &&
+@@ -4922,7 +4932,6 @@ int rust_star_metal_run_prefill_layer0_boundary(
+         const uint32_t compressor_rows = prefill_rows/compressor_ratio;
+         const uint32_t compressor_tile_rows = rows/compressor_ratio;
+         const NSUInteger row_tiles = (rows+31u)/32u;
+-        const uint32_t raw_cache_target_row = position_start % raw_cache_rows;
+         const uint32_t kv_prefix_rows = position_start;
+         if (weights->attn_output_a_bytes != 8ull*1024ull*((4096ull/32ull)*34ull) ||
+             weights->attn_output_b_bytes != 4096ull*((8192ull/32ull)*34ull)) {
+@@ -5689,13 +5698,13 @@ int rust_star_metal_run_prefill_layer0_boundary(
+         layer2_kv_rope_args.ext_factor = 1.0f;
+         layer2_kv_rope_args.attn_factor =
+             1.0f/(1.0f + 0.1f*logf(1.0f/layer2_freq_scale));
+-        int32_t positions[64];
++        int32_t positions[4096];
+         for (uint32_t row = 0; row < rows; row++) {
+             positions[row] = (int32_t)(position_start + row);
+         }
+         id<MTLBuffer> position_buffer = [context.device newBufferWithBytes:positions
+             length:rows*sizeof(int32_t) options:MTLResourceStorageModeShared];
+-        int32_t compressed_positions[16];
++        int32_t compressed_positions[1024];
+         for (uint32_t row = 0; row < compressor_tile_rows; row++) {
+             compressed_positions[row] =
+                 (int32_t)(position_start + row*compressor_ratio);
+@@ -6022,12 +6031,19 @@ int rust_star_metal_run_prefill_layer0_boundary(
+         [encoder setBuffer:kv_half_buffer offset:0 atIndex:2];
+         [encoder dispatchThreadgroups:MTLSizeMake(conversion_groups,1,1)
+              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++        // A wide batch leaves exactly its final 128 rows in the raw ring.
++        const uint32_t raw_copy_rows = MIN(rows, (uint32_t)raw_cache_rows);
++        const uint32_t raw_copy_elements = raw_copy_rows*kv_dim;
++        const NSUInteger raw_source_row = rows-raw_copy_rows;
++        const NSUInteger raw_target_row =
++            (position_start+raw_source_row)%raw_cache_rows;
+         [encoder setComputePipelineState:context.cpyF16F32Pipeline];
+-        [encoder setBytes:&kv_elements length:sizeof(kv_elements) atIndex:0];
+-        [encoder setBuffer:kv_half_buffer offset:0 atIndex:1];
++        [encoder setBytes:&raw_copy_elements length:sizeof(raw_copy_elements) atIndex:0];
++        [encoder setBuffer:kv_half_buffer
++                     offset:raw_source_row*kv_dim*sizeof(uint16_t) atIndex:1];
+         [encoder setBuffer:raw_cache_buffer
+-                     offset:raw_cache_target_row*kv_dim*sizeof(float) atIndex:2];
+-        [encoder dispatchThreadgroups:MTLSizeMake(conversion_groups,1,1)
++                     offset:raw_target_row*kv_dim*sizeof(float) atIndex:2];
++        [encoder dispatchThreadgroups:MTLSizeMake((raw_copy_elements+1023u)/1024u,1,1)
+              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+         [encoder endEncoding];
+ 
+@@ -6437,12 +6453,19 @@ int rust_star_metal_run_prefill_layer0_boundary(
+             [encoder setBuffer:next_kv_half_buffer offset:0 atIndex:2];
+             [encoder dispatchThreadgroups:MTLSizeMake(conversion_groups,1,1)
+                  threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++            // A wide batch leaves exactly its final 128 rows in the raw ring.
++            const uint32_t raw_copy_rows = MIN(rows, (uint32_t)raw_cache_rows);
++            const uint32_t raw_copy_elements = raw_copy_rows*kv_dim;
++            const NSUInteger raw_source_row = rows-raw_copy_rows;
++            const NSUInteger raw_target_row =
++                (position_start+raw_source_row)%raw_cache_rows;
+             [encoder setComputePipelineState:context.cpyF16F32Pipeline];
+-            [encoder setBytes:&kv_elements length:sizeof(kv_elements) atIndex:0];
+-            [encoder setBuffer:next_kv_half_buffer offset:0 atIndex:1];
++            [encoder setBytes:&raw_copy_elements length:sizeof(raw_copy_elements) atIndex:0];
++            [encoder setBuffer:next_kv_half_buffer
++                         offset:raw_source_row*kv_dim*sizeof(uint16_t) atIndex:1];
+             [encoder setBuffer:next_raw_cache_buffer
+-                         offset:raw_cache_target_row*kv_dim*sizeof(float) atIndex:2];
+-            [encoder dispatchThreadgroups:MTLSizeMake(conversion_groups,1,1)
++                         offset:raw_target_row*kv_dim*sizeof(float) atIndex:2];
++            [encoder dispatchThreadgroups:MTLSizeMake((raw_copy_elements+1023u)/1024u,1,1)
+                  threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+             [encoder endEncoding];
+ 

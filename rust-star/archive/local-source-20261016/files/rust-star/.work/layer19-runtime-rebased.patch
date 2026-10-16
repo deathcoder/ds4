@@ -1,0 +1,2063 @@
+diff --git a/rust-star/runtime/src/main.rs b/rust-star/runtime/src/main.rs
+index 9be5c12..c8af550 100644
+--- a/rust-star/runtime/src/main.rs
++++ b/rust-star/runtime/src/main.rs
+@@ -2476,7 +2476,7 @@ fn run_prefill_layers012_attention_loop_probe_command(arguments: Vec<OsString>)
+     let model = MappedModel::open(&model_path)?;
+     validate_resident_q2(model.gguf())?;
+     let report = run_prefill_layers012_attention_loop_probe(&model)?;
+-    println!("native complete layers 0-16 at 2K: 2048 raw rows + 512 dense layer-2/layer-4/layer-6/layer-8/layer-10/layer-12/layer-14/layer-18 compressed rows + 16 layer-3/layer-5/layer-7/layer-9/layer-11/layer-13/layer-15 compressed rows");
++    println!("native complete layers 0-17 at 2K: 2048 raw rows + 512 dense layer-2/layer-4/layer-6/layer-8/layer-10/layer-12/layer-14/layer-18 compressed rows + 16 layer-3/layer-5/layer-7/layer-9/layer-11/layer-13/layer-15/layer-19 compressed rows");
+     println!(
+         "terminal attention/FFN schedule: {} dispatches, {}/{} no-copy model ranges, wall={:.3} ms gpu={:.3} ms",
+         report.dispatches,
+@@ -2485,7 +2485,7 @@ fn run_prefill_layers012_attention_loop_probe_command(arguments: Vec<OsString>)
+         report.wall_ms,
+         report.gpu_ms,
+     );
+-    println!("scope: complete native layers 0-16, including exact paired ratio-4 and ratio-128 compressors, dense mixed attention, biased top-6 routed/shared FFNs, and additive final HC updates at the 2K prompt boundary; no layer-19 prefill, sparse post-prompt top-k, complete-model-prefill, output-logit, or throughput claim");
++    println!("scope: complete native layers 0-17, including exact paired ratio-4 and ratio-128 compressors, dense mixed attention, biased top-6 routed/shared FFNs, and additive final HC updates at the 2K prompt boundary; no layer-18 prefill, sparse post-prompt top-k, complete-model-prefill, output-logit, or throughput claim");
+     if let Some(path) = json_path {
+         write_prefill_layers012_attention_loop_probe_file(&path, &report)?;
+         println!("json: {}", path.display());
+@@ -4088,7 +4088,7 @@ fn prefill_layers012_compressor_loop_probe_usage() -> &'static str {
+ }
+ 
+ fn prefill_layers012_attention_loop_probe_usage() -> &'static str {
+-    "usage: rust-star prefill-layers012-attention-loop-probe MODEL.gguf [--json PATH]\n\nRuns all 64 native 32-row schedules over positions 0--2047 in one persistent Metal context and completes layers 2 through 16. Even layers 2/4/6/8/10/12/14/16 include paired ratio-4 attention/indexer compressors; odd layers 3/5/7/9/11/13/15 use ratio-128 attention compressors. Each layer continues through dense mixed attention, biased top-6 routed/shared experts, and its additive final HC update. Every retained boundary must match repeated DwarfStar captures bit-for-bit. The 2,064 logical odd-layer keys use a 2,112-row masked physical extent required by the 64-row FlashAttention block contract. Exactly 512 ratio-4 rows remain on the dense path at this prompt boundary. This does not claim layer-19 prefill, sparse post-prompt ratio-4 attention, complete-model prefill, output logits, or throughput."
++    "usage: rust-star prefill-layers012-attention-loop-probe MODEL.gguf [--json PATH]\n\nRuns all 64 native 32-row schedules over positions 0--2047 in one persistent Metal context and completes layers 2 through 17. Even layers 2/4/6/8/10/12/14/16 include paired ratio-4 attention/indexer compressors; odd layers 3/5/7/9/11/13/15/17 use ratio-128 attention compressors. Each layer continues through dense mixed attention, biased top-6 routed/shared experts, and its additive final HC update. Every retained boundary must match repeated DwarfStar captures bit-for-bit. The 2,064 logical odd-layer keys use a 2,112-row masked physical extent required by the 64-row FlashAttention block contract. Exactly 512 ratio-4 rows remain on the dense path at this prompt boundary. This does not claim layer-18 prefill, sparse post-prompt ratio-4 attention, complete-model prefill, output logits, or throughput."
+ }
+ 
+ fn ingress_probe_usage() -> &'static str {
+diff --git a/rust-star/runtime/src/metal.rs b/rust-star/runtime/src/metal.rs
+index 21d55ba..4005f8f 100644
+--- a/rust-star/runtime/src/metal.rs
++++ b/rust-star/runtime/src/metal.rs
+@@ -198,6 +198,13 @@ pub const PREFILL_LAYER18_ATTENTION_FIXTURE_ID: &str =
+     "dwarfstar-oracle-v1-prefill-layer18-attention-2048";
+ pub const PREFILL_LAYER18_COMPLETE_FIXTURE_ID: &str =
+     "dwarfstar-oracle-v1-prefill-layer18-complete-2048";
++pub const PREFILL_LAYER19_QKV_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-layer19-qkv-2048";
++pub const PREFILL_LAYER19_COMPRESSOR_FIXTURE_ID: &str =
++    "dwarfstar-oracle-v1-prefill-layer19-compressor-2048";
++pub const PREFILL_LAYER19_ATTENTION_FIXTURE_ID: &str =
++    "dwarfstar-oracle-v1-prefill-layer19-attention-2048";
++pub const PREFILL_LAYER19_COMPLETE_FIXTURE_ID: &str =
++    "dwarfstar-oracle-v1-prefill-layer19-complete-2048";
+ pub const PREFILL_LAYERS01_PREVIOUS_TILE_FIXTURE_ID: &str =
+     "dwarfstar-oracle-v1-prefill-layers01-previous-tile-2048";
+ pub const PREFILL_HC_INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-hc-ingress-2048";
+@@ -1080,6 +1087,32 @@ const PREFILL_LAYER18_KQV_BACK_ROW0_BYTES: &[u8] = include_bytes!(
+ const PREFILL_LAYER18_ATTN_LOW_ROW0_BYTES: &[u8] = include_bytes!(
+     "../../fixtures/prefill-layer18-attention-2048-v1/layer18-attn-low-row0.f32le.bin"
+ );
++const PREFILL_LAYER19_ATTN_COMPRESSED_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer19-compressor-2048-v1/attention-compressed-kv.f32le.bin"
++);
++const PREFILL_LAYER19_ATTN_STATE_KV_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer19-compressor-2048-v1/attention-state-kv.f32le.bin"
++);
++const PREFILL_LAYER19_ATTN_STATE_SCORE_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer19-compressor-2048-v1/attention-state-score.i32le.bin"
++);
++const PREFILL_LAYER19_ATTENTION_OUTPUT_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer19-attention-2048-v1/layer19-attention-output.f32le.bin"
++);
++const PREFILL_LAYER19_ATTENTION_OUTPUT_CHECKSUM: u64 = 0xf77f_da9f_600a_811e;
++const PREFILL_LAYER19_HC_ATTN_POST_FINAL_TILE_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer19-attention-2048-v1/layer19-hc-attn-post-final-tile.f32le.bin"
++);
++const PREFILL_LAYER19_HC_ATTN_POST_FULL_CHECKSUM: u64 = 0xba9b_3d18_6372_5e9a;
++const PREFILL_LAYER19_KQV_OUT_ROW0_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer19-attention-2048-v1/layer19-kqv-out-row0.f32le.bin"
++);
++const PREFILL_LAYER19_KQV_BACK_ROW0_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer19-attention-2048-v1/layer19-kqv-back-row0.f32le.bin"
++);
++const PREFILL_LAYER19_ATTN_LOW_ROW0_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer19-attention-2048-v1/layer19-attn-low-row0.f32le.bin"
++);
+ const PREFILL_LAYER4_ATTENTION_OUTPUT_BYTES: &[u8] = include_bytes!(
+     "../../fixtures/prefill-layer4-attention-2048-v1/layer4-attention-output.f32le.bin"
+ );
+@@ -1492,6 +1525,28 @@ const PREFILL_LAYER18_HC_FFN_POST_FINAL_TILE_BYTES: &[u8] = include_bytes!(
+     "../../fixtures/prefill-layer18-complete-2048-v1/layer18-hc-ffn-post-final-tile.f32le.bin"
+ );
+ const PREFILL_LAYER18_HC_FFN_POST_FULL_CHECKSUM: u64 = 0x08d0_3077_d850_52dd;
++const PREFILL_LAYER19_FFN_CUR_FINAL_TILE_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer19-complete-2048-v1/layer19-hc-ffn-pre-final-tile.f32le.bin"
++);
++const PREFILL_LAYER19_FFN_NORM_FINAL_TILE_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer19-complete-2048-v1/layer19-ffn-norm-final-tile.f32le.bin"
++);
++const PREFILL_LAYER19_ROUTER_SELECTED_FINAL_TILE_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer19-complete-2048-v1/layer19-ffn-moe-topk-final-tile.i32le.bin"
++);
++const PREFILL_LAYER19_ROUTER_WEIGHTS_FINAL_TILE_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer19-complete-2048-v1/layer19-ffn-moe-weights-scaled-final-tile.f32le.bin"
++);
++const PREFILL_LAYER19_ROUTED_OUT_FINAL_TILE_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer19-complete-2048-v1/layer19-ffn-moe-out-final-tile.f32le.bin"
++);
++const PREFILL_LAYER19_SHARED_OUT_FINAL_TILE_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer19-complete-2048-v1/layer19-ffn-shexp-final-tile.f32le.bin"
++);
++const PREFILL_LAYER19_HC_FFN_POST_FINAL_TILE_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer19-complete-2048-v1/layer19-hc-ffn-post-final-tile.f32le.bin"
++);
++const PREFILL_LAYER19_HC_FFN_POST_FULL_CHECKSUM: u64 = 0x0d83_6e55_a2c1_2e94;
+ const PREFILL_LAYER3_FFN_CUR_FINAL_TILE_BYTES: &[u8] = include_bytes!(
+     "../../fixtures/prefill-layer3-complete-2048-v1/layer3-hc-ffn-pre-final-tile.f32le.bin"
+ );
+@@ -1834,6 +1889,30 @@ const PREFILL_LAYER18_QKV_FINAL_TILE_BYTES: [&[u8]; 10] = [
+         "../../fixtures/prefill-layer18-qkv-2048-v1/layer18-kv-current-final-tile.f32le.bin"
+     ),
+ ];
++const PREFILL_LAYER19_QKV_FINAL_TILE_BYTES: [&[u8]; 10] = [
++    include_bytes!(
++        "../../fixtures/prefill-layer19-qkv-2048-v1/layer19-hc-attn-pre-final-tile.f32le.bin"
++    ),
++    include_bytes!(
++        "../../fixtures/prefill-layer19-qkv-2048-v1/layer19-attn-norm-final-tile.f32le.bin"
++    ),
++    include_bytes!(
++        "../../fixtures/prefill-layer19-qkv-2048-v1/layer19-q-lora-final-tile.f32le.bin"
++    ),
++    include_bytes!(
++        "../../fixtures/prefill-layer19-qkv-2048-v1/layer19-q-lora-norm-final-tile.f32le.bin"
++    ),
++    include_bytes!("../../fixtures/prefill-layer19-qkv-2048-v1/layer19-kvraw-final-tile.f32le.bin"),
++    include_bytes!(
++        "../../fixtures/prefill-layer19-qkv-2048-v1/layer19-kvnorm-final-tile.f32le.bin"
++    ),
++    include_bytes!("../../fixtures/prefill-layer19-qkv-2048-v1/layer19-qraw-final-tile.f32le.bin"),
++    include_bytes!("../../fixtures/prefill-layer19-qkv-2048-v1/layer19-qcur-final-tile.f32le.bin"),
++    include_bytes!(
++        "../../fixtures/prefill-layer19-qkv-2048-v1/layer19-kvrope-final-tile.f32le.bin"
++    ),
++    include_bytes!("../../fixtures/prefill-layer19-qkv-2048-v1/layer19-kvcur-final-tile.f32le.bin"),
++];
+ const PREFILL_LAYER3_KQV_OUT_ROW0_BYTES: &[u8] =
+     include_bytes!("../../fixtures/prefill-layer3-attention-2048-v1/layer3-kqv-out-row0.f32le.bin");
+ const PREFILL_LAYER3_KQV_BACK_ROW0_BYTES: &[u8] = include_bytes!(
+@@ -2484,6 +2563,10 @@ pub struct PrefillLayers012AttentionLoopProbeReport {
+     pub layer18_compressor_fixture_id: &'static str,
+     pub layer18_attention_fixture_id: &'static str,
+     pub layer18_complete_fixture_id: &'static str,
++    pub layer19_qkv_fixture_id: &'static str,
++    pub layer19_compressor_fixture_id: &'static str,
++    pub layer19_attention_fixture_id: &'static str,
++    pub layer19_complete_fixture_id: &'static str,
+     pub rows: u32,
+     pub raw_kv_rows: u32,
+     pub compressed_kv_rows: u32,
+@@ -2577,6 +2660,11 @@ pub struct PrefillLayers012AttentionLoopProbeReport {
+     pub layer18_attention_output_checksum: u64,
+     pub layer18_after_attention_hc_checksum: u64,
+     pub layer18_after_ffn_hc_checksum: u64,
++    pub layer19_qkv_checksums: [u64; 10],
++    pub layer19_compressor_checksums: [u64; 3],
++    pub layer19_attention_output_checksum: u64,
++    pub layer19_after_attention_hc_checksum: u64,
++    pub layer19_after_ffn_hc_checksum: u64,
+ }
+ 
+ #[derive(Clone, Debug)]
+@@ -4965,6 +5053,10 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
+     let layer18_compressor = prefill_layer18_compressor_fixture()?;
+     let _layer18_attention = prefill_layer18_attention_fixture()?;
+     let _layer18_complete = prefill_layer18_complete_final_tile_fixture()?;
++    let layer19_qkv = prefill_layer19_qkv_final_tile_fixture()?;
++    let layer19_compressor = prefill_layer19_compressor_fixture()?;
++    let _layer19_attention = prefill_layer19_attention_fixture()?;
++    let _layer19_complete = prefill_layer19_complete_final_tile_fixture()?;
+     if report.compressor.tiles.len() != 64
+         || report.attention_fixture_id != PREFILL_LAYER2_ATTENTION_FIXTURE_ID
+         || report.attention_hc_fixture_id != PREFILL_LAYER2_COMPLETE_FIXTURE_ID
+@@ -5025,13 +5117,17 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
+         || report.layer18_compressor_fixture_id != PREFILL_LAYER18_COMPRESSOR_FIXTURE_ID
+         || report.layer18_attention_fixture_id != PREFILL_LAYER18_ATTENTION_FIXTURE_ID
+         || report.layer18_complete_fixture_id != PREFILL_LAYER18_COMPLETE_FIXTURE_ID
++        || report.layer19_qkv_fixture_id != PREFILL_LAYER19_QKV_FIXTURE_ID
++        || report.layer19_compressor_fixture_id != PREFILL_LAYER19_COMPRESSOR_FIXTURE_ID
++        || report.layer19_attention_fixture_id != PREFILL_LAYER19_ATTENTION_FIXTURE_ID
++        || report.layer19_complete_fixture_id != PREFILL_LAYER19_COMPLETE_FIXTURE_ID
+         || report.rows != 2048
+         || report.raw_kv_rows != 2048
+         || report.compressed_kv_rows != 512
+         || report.layer3_compressed_kv_rows != 16
+-        || report.dispatches != 968
+-        || report.wrapped_model_ranges != 496
+-        || report.pointer_matches != 496
++        || report.dispatches != 1015
++        || report.wrapped_model_ranges != 524
++        || report.pointer_matches != 524
+         || report.output_checksum != checksum_f32(&expected)
+         || report.after_attention_hc_checksum != PREFILL_LAYER2_HC_ATTN_POST_FULL_CHECKSUM
+         || report.after_ffn_hc_checksum != PREFILL_LAYER2_HC_FFN_POST_FULL_CHECKSUM
+@@ -5167,6 +5263,16 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
+         || report.layer18_attention_output_checksum != PREFILL_LAYER18_ATTENTION_OUTPUT_CHECKSUM
+         || report.layer18_after_attention_hc_checksum != PREFILL_LAYER18_HC_ATTN_POST_FULL_CHECKSUM
+         || report.layer18_after_ffn_hc_checksum != PREFILL_LAYER18_HC_FFN_POST_FULL_CHECKSUM
++        || report.layer19_qkv_checksums != layer19_qkv.each_ref().map(|tensor| checksum_f32(tensor))
++        || report.layer19_compressor_checksums
++            != [
++                checksum_f32(&layer19_compressor.0),
++                checksum_f32(&layer19_compressor.1),
++                checksum_i32(&layer19_compressor.2),
++            ]
++        || report.layer19_attention_output_checksum != PREFILL_LAYER19_ATTENTION_OUTPUT_CHECKSUM
++        || report.layer19_after_attention_hc_checksum != PREFILL_LAYER19_HC_ATTN_POST_FULL_CHECKSUM
++        || report.layer19_after_ffn_hc_checksum != PREFILL_LAYER19_HC_FFN_POST_FULL_CHECKSUM
+         || !report.wall_ms.is_finite()
+         || report.wall_ms <= 0.0
+         || !report.gpu_ms.is_finite()
+@@ -5250,6 +5356,10 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
+         report.layer18_compressor_fixture_id,
+         report.layer18_attention_fixture_id,
+         report.layer18_complete_fixture_id,
++        report.layer19_qkv_fixture_id,
++        report.layer19_compressor_fixture_id,
++        report.layer19_attention_fixture_id,
++        report.layer19_complete_fixture_id,
+     ]
+     .iter()
+     .enumerate()
+@@ -5523,6 +5633,28 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
+         report.layer18_after_attention_hc_checksum,
+         report.layer18_after_ffn_hc_checksum,
+     );
++    let checksum_tail = checksum_tail.replace(
++        "}}},\n  \"persistent_metal_context\"",
++        &format!(
++            ", \"layer19_qkv_final_tiles\": [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}], \"layer19_ratio128_compressor\": [{}, {}, {}], \"layer19_attention_output\": {}, \"layer19_attention_hc_post\": {}, \"layer19_ffn_hc_post\": {}}}}},\n  \"persistent_metal_context\"",
++            report.layer19_qkv_checksums[0],
++            report.layer19_qkv_checksums[1],
++            report.layer19_qkv_checksums[2],
++            report.layer19_qkv_checksums[3],
++            report.layer19_qkv_checksums[4],
++            report.layer19_qkv_checksums[5],
++            report.layer19_qkv_checksums[6],
++            report.layer19_qkv_checksums[7],
++            report.layer19_qkv_checksums[8],
++            report.layer19_qkv_checksums[9],
++            report.layer19_compressor_checksums[0],
++            report.layer19_compressor_checksums[1],
++            report.layer19_compressor_checksums[2],
++            report.layer19_attention_output_checksum,
++            report.layer19_after_attention_hc_checksum,
++            report.layer19_after_ffn_hc_checksum,
++        ),
++    );
+     let rendered = rendered
+         .replace(
+             "\"complete_layers\": [0, 1, 2, 3], \"downstream_layer\": 4",
+@@ -5881,9 +6013,33 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
+             "\"complete_layer15_prefill_claim\": true,",
+             "\"complete_layer15_prefill_claim\": true,\n  \"complete_layer18_qkv_state_claim\": true,\n  \"complete_layer18_paired_compressor_claim\": true,\n  \"complete_layer18_dense_mixed_attention_claim\": true,\n  \"complete_layer18_attention_hc_post_claim\": true,\n  \"complete_layer18_ffn_claim\": true,\n  \"complete_layer18_prefill_claim\": true,",
+         )
++        .replace(
++            "\"complete_layers\": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16], \"downstream_layer\": null",
++            "\"complete_layers\": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17], \"downstream_layer\": null",
++        )
++        .replace(
++            "\"output_boundary\": \"layer18_ffn_hc_post\"",
++            "\"output_boundary\": \"layer19_ffn_hc_post\"",
++        )
++        .replace(
++            "\"layer18_ffn_router\": \"biased top-6 batch\",",
++            "\"layer18_ffn_router\": \"biased top-6 batch\", \"layer19_qkv_dispatches\": 10, \"layer19_ratio128_compressor_dispatches\": 7, \"layer19_dense_attention_dispatches\": 9, \"layer19_ffn_dispatches\": 21, \"layer19_ffn_router\": \"biased top-6 batch\",",
++        )
++        .replace(
++            "\"layer18_ffn_hc_post_c0_bitwise_match\": true,",
++            "\"layer18_ffn_hc_post_c0_bitwise_match\": true,\n  \"layer19_qkv_state_c0_bitwise_match\": true,\n  \"layer19_ratio128_compressor_c0_bitwise_match\": true,\n  \"layer19_attention_output_c0_bitwise_match\": true,\n  \"layer19_attention_hc_post_c0_bitwise_match\": true,\n  \"layer19_ffn_biased_topk_c0_bitwise_match\": true,\n  \"layer19_ffn_outputs_c0_bitwise_match\": true,\n  \"layer19_ffn_hc_post_c0_bitwise_match\": true,",
++        )
++        .replace(
++            "\"complete_layer18_prefill_claim\": true,",
++            "\"complete_layer18_prefill_claim\": true,\n  \"complete_layer19_qkv_state_claim\": true,\n  \"complete_layer19_ratio128_compressor_claim\": true,\n  \"complete_layer19_dense_mixed_attention_claim\": true,\n  \"complete_layer19_attention_hc_post_claim\": true,\n  \"complete_layer19_ffn_claim\": true,\n  \"complete_layer19_prefill_claim\": true,",
++        )
+         .replace(
+             "\"layer7_compressor_ratio\": 128, \"layer7_compressed_rows\": 16",
+             "\"layer7_compressor_ratio\": 128, \"layer7_compressed_rows\": 16, \"layer8_compressor_ratio\": 4, \"layer8_compressed_rows\": 512, \"layer8_sparse_indexer_topk\": false, \"layer9_compressor_ratio\": 128, \"layer9_compressed_rows\": 16, \"layer10_compressor_ratio\": 4, \"layer10_compressed_rows\": 512, \"layer10_sparse_indexer_topk\": false, \"layer11_compressor_ratio\": 128, \"layer11_compressed_rows\": 16, \"layer12_compressor_ratio\": 4, \"layer12_compressed_rows\": 512, \"layer12_sparse_indexer_topk\": false, \"layer13_compressor_ratio\": 128, \"layer13_compressed_rows\": 16, \"layer14_compressor_ratio\": 4, \"layer14_compressed_rows\": 512, \"layer14_sparse_indexer_topk\": false, \"layer15_compressor_ratio\": 128, \"layer15_compressed_rows\": 16, \"layer18_compressor_ratio\": 4, \"layer18_compressed_rows\": 512, \"layer18_sparse_indexer_topk\": false",
++        )
++        .replace(
++            "\"layer18_sparse_indexer_topk\": false",
++            "\"layer18_sparse_indexer_topk\": false, \"layer19_compressor_ratio\": 128, \"layer19_compressed_rows\": 16",
+         );
+     output.write_all(rendered.as_bytes())?;
+     Ok(())
+@@ -9194,6 +9350,158 @@ fn prefill_layer18_qkv_final_tile_fixture() -> Result<[Vec<f32>; 10]> {
+         .map_err(|_| Error::invalid("prefill layer-18 Q/KV fixture count is invalid"))
+ }
+ 
++fn prefill_layer19_compressor_fixture() -> Result<(Vec<f32>, Vec<f32>, Vec<i32>)> {
++    let compressed = decode_f32_fixture(
++        PREFILL_LAYER19_ATTN_COMPRESSED_BYTES,
++        "prefill layer-19 attention compressed KV",
++    )?;
++    let state_kv = decode_f32_fixture(
++        PREFILL_LAYER19_ATTN_STATE_KV_BYTES,
++        "prefill layer-19 attention compressor KV state",
++    )?;
++    let state_score = decode_i32_fixture(
++        PREFILL_LAYER19_ATTN_STATE_SCORE_BYTES,
++        "prefill layer-19 attention compressor score-state bits",
++    )?;
++    if compressed.len() != 16 * 512 || state_kv.len() != 128 * 512 || state_score.len() != 128 * 512
++    {
++        return Err(Error::invalid(
++            "prefill layer-19 compressor fixture dimensions are invalid",
++        ));
++    }
++    Ok((compressed, state_kv, state_score))
++}
++
++fn prefill_layer19_attention_fixture() -> Result<(Vec<f32>, Vec<f32>)> {
++    let attention = decode_f32_fixture(
++        PREFILL_LAYER19_ATTENTION_OUTPUT_BYTES,
++        "prefill layer-19 dense mixed-attention output",
++    )?;
++    let hc_final_tile = decode_f32_fixture(
++        PREFILL_LAYER19_HC_ATTN_POST_FINAL_TILE_BYTES,
++        "prefill layer-19 attention HC post final tile",
++    )?;
++    if attention.len() != 2048 * 4096 || hc_final_tile.len() != 32 * 4 * 4096 {
++        return Err(Error::invalid(
++            "prefill layer-19 attention fixture dimensions are invalid",
++        ));
++    }
++    Ok((attention, hc_final_tile))
++}
++
++fn prefill_layer19_attention_diagnostics_fixture() -> Result<[Vec<f32>; 3]> {
++    let tensors = [
++        decode_f32_fixture(
++            PREFILL_LAYER19_KQV_OUT_ROW0_BYTES,
++            "layer-19 KQV output row 0",
++        )?,
++        decode_f32_fixture(
++            PREFILL_LAYER19_KQV_BACK_ROW0_BYTES,
++            "layer-19 KQV back row 0",
++        )?,
++        decode_f32_fixture(
++            PREFILL_LAYER19_ATTN_LOW_ROW0_BYTES,
++            "layer-19 attention low row 0",
++        )?,
++    ];
++    if tensors[0].len() != 32_768 || tensors[1].len() != 32_768 || tensors[2].len() != 8_192 {
++        return Err(Error::invalid(
++            "prefill layer-19 attention diagnostic fixture dimensions are invalid",
++        ));
++    }
++    Ok(tensors)
++}
++
++fn prefill_layer19_complete_final_tile_fixture() -> Result<PrefillLayer3CompleteFixture> {
++    let fixture = PrefillLayer3CompleteFixture {
++        ffn_cur: decode_f32_fixture(
++            PREFILL_LAYER19_FFN_CUR_FINAL_TILE_BYTES,
++            "prefill layer-19 FFN HC ingress final tile",
++        )?,
++        ffn_norm: decode_f32_fixture(
++            PREFILL_LAYER19_FFN_NORM_FINAL_TILE_BYTES,
++            "prefill layer-19 FFN norm final tile",
++        )?,
++        router_selected: decode_i32_fixture(
++            PREFILL_LAYER19_ROUTER_SELECTED_FINAL_TILE_BYTES,
++            "prefill layer-19 biased top-k selections final tile",
++        )?,
++        router_weights: decode_f32_fixture(
++            PREFILL_LAYER19_ROUTER_WEIGHTS_FINAL_TILE_BYTES,
++            "prefill layer-19 router weights final tile",
++        )?,
++        routed_out: decode_f32_fixture(
++            PREFILL_LAYER19_ROUTED_OUT_FINAL_TILE_BYTES,
++            "prefill layer-19 routed output final tile",
++        )?,
++        shared_out: decode_f32_fixture(
++            PREFILL_LAYER19_SHARED_OUT_FINAL_TILE_BYTES,
++            "prefill layer-19 shared output final tile",
++        )?,
++        hc_post: decode_f32_fixture(
++            PREFILL_LAYER19_HC_FFN_POST_FINAL_TILE_BYTES,
++            "prefill layer-19 FFN HC post final tile",
++        )?,
++    };
++    if fixture.ffn_cur.len() != 32 * 4096
++        || fixture.ffn_norm.len() != 32 * 4096
++        || fixture.router_selected.len() != 32 * 6
++        || fixture.router_weights.len() != 32 * 6
++        || fixture.routed_out.len() != 32 * 4096
++        || fixture.shared_out.len() != 32 * 4096
++        || fixture.hc_post.len() != 32 * 4 * 4096
++    {
++        return Err(Error::invalid(
++            "prefill layer-19 complete fixture dimensions are invalid",
++        ));
++    }
++    Ok(fixture)
++}
++
++fn prefill_layer19_qkv_final_tile_fixture() -> Result<[Vec<f32>; 10]> {
++    let labels = [
++        "HC attention ingress",
++        "attention norm",
++        "Q-Lora",
++        "Q-Lora norm",
++        "KV raw",
++        "KV norm",
++        "Q raw",
++        "Q current",
++        "KV rope",
++        "KV current",
++    ];
++    let expected_lengths = [
++        32 * 4096,
++        32 * 4096,
++        32 * 1024,
++        32 * 1024,
++        32 * 512,
++        32 * 512,
++        32 * 32768,
++        32 * 32768,
++        32 * 512,
++        32 * 512,
++    ];
++    let mut tensors = Vec::with_capacity(PREFILL_LAYER19_QKV_FINAL_TILE_BYTES.len());
++    for ((bytes, label), expected_length) in PREFILL_LAYER19_QKV_FINAL_TILE_BYTES
++        .into_iter()
++        .zip(labels)
++        .zip(expected_lengths)
++    {
++        let tensor = decode_f32_fixture(bytes, &format!("prefill layer-19 {label} final tile"))?;
++        if tensor.len() != expected_length {
++            return Err(Error::invalid(format!(
++                "prefill layer-19 {label} fixture dimensions are invalid"
++            )));
++        }
++        tensors.push(tensor);
++    }
++    tensors
++        .try_into()
++        .map_err(|_| Error::invalid("prefill layer-19 Q/KV fixture count is invalid"))
++}
++
+ fn prefill_hc_ingress_fixture() -> Result<(Vec<u32>, Vec<f32>, Vec<f32>)> {
+     let tokens = decode_u32_fixture(PREFILL_HC_TOKEN_IDS_BYTES, "prefill HC token IDs")?;
+     let collapsed = decode_f32_fixture(
+@@ -10608,6 +10916,17 @@ mod imp {
+         layer18_attn_output_b_offset: u64,
+         layer18_attn_output_b_bytes: u64,
+         layer18_ffn: RawPrefillFfnWeights,
++        layer19_kvnorm: RawPrefillKvnormWeights,
++        layer19_q_b_offset: u64,
++        layer19_q_b_bytes: u64,
++        layer19_compressor: RawPrefillCompressorWeights,
++        layer19_attn_sinks_offset: u64,
++        layer19_attn_sinks_bytes: u64,
++        layer19_attn_output_a_offset: u64,
++        layer19_attn_output_a_bytes: u64,
++        layer19_attn_output_b_offset: u64,
++        layer19_attn_output_b_bytes: u64,
++        layer19_ffn: RawPrefillFfnWeights,
+     }
+ 
+     #[repr(C)]
+@@ -11347,6 +11666,31 @@ mod imp {
+             layer18_router_weights_final_tile: *mut f32,
+             layer18_routed_out_final_tile: *mut f32,
+             layer18_shared_out_final_tile: *mut f32,
++            layer19_hc_attn_pre_final_tile: *mut f32,
++            layer19_attn_norm_final_tile: *mut f32,
++            layer19_q_lora_final_tile: *mut f32,
++            layer19_q_lora_norm_final_tile: *mut f32,
++            layer19_kv_raw_final_tile: *mut f32,
++            layer19_kv_norm_final_tile: *mut f32,
++            layer19_q_raw_final_tile: *mut f32,
++            layer19_q_cur_final_tile: *mut f32,
++            layer19_kv_rope_final_tile: *mut f32,
++            layer19_kv_cur_final_tile: *mut f32,
++            layer19_attn_compressed: *mut f32,
++            layer19_attn_state_kv: *mut f32,
++            layer19_attn_state_score: *mut i32,
++            layer19_kqv_out_row0: *mut f32,
++            layer19_kqv_back_row0: *mut f32,
++            layer19_attn_low_row0: *mut f32,
++            layer19_attention_output: *mut f32,
++            layer19_after_attention_hc: *mut f32,
++            layer19_after_ffn_hc: *mut f32,
++            layer19_ffn_cur_final_tile: *mut f32,
++            layer19_ffn_norm_final_tile: *mut f32,
++            layer19_router_selected_final_tile: *mut i32,
++            layer19_router_weights_final_tile: *mut f32,
++            layer19_routed_out_final_tile: *mut f32,
++            layer19_shared_out_final_tile: *mut f32,
+             result: *mut RawPrefillLayer2AttentionResult,
+             error: *mut c_char,
+             error_bytes: usize,
+@@ -14316,6 +14660,12 @@ mod imp {
+         let expected_layer18_attention_diagnostics =
+             prefill_layer18_attention_diagnostics_fixture()?;
+         let expected_layer18_complete = prefill_layer18_complete_final_tile_fixture()?;
++        let expected_layer19_qkv = prefill_layer19_qkv_final_tile_fixture()?;
++        let expected_layer19_compressor = prefill_layer19_compressor_fixture()?;
++        let expected_layer19_attention = prefill_layer19_attention_fixture()?;
++        let expected_layer19_attention_diagnostics =
++            prefill_layer19_attention_diagnostics_fixture()?;
++        let expected_layer19_complete = prefill_layer19_complete_final_tile_fixture()?;
+         let q_b = exact_tensor(model, "blk.2.attn_q_b.weight", 8, &[1024, 32768])?;
+         let sinks = exact_tensor(model, "blk.2.attn_sinks.weight", 0, &[64])?;
+         let output_a = exact_tensor(model, "blk.2.attn_output_a.weight", 8, &[4096, 8192])?;
+@@ -14996,6 +15346,47 @@ mod imp {
+             exact_tensor(model, "blk.18.ffn_up_shexp.weight", 8, &[4096, 2048])?;
+         let layer18_shared_down =
+             exact_tensor(model, "blk.18.ffn_down_shexp.weight", 8, &[2048, 4096])?;
++        let layer19_hc_fn = exact_tensor(model, "blk.19.hc_attn_fn.weight", 1, &[16384, 24])?;
++        let layer19_hc_scale = exact_tensor(model, "blk.19.hc_attn_scale.weight", 0, &[3])?;
++        let layer19_hc_base = exact_tensor(model, "blk.19.hc_attn_base.weight", 0, &[24])?;
++        let layer19_norm = exact_tensor(model, "blk.19.attn_norm.weight", 0, &[4096])?;
++        let layer19_q_a = exact_tensor(model, "blk.19.attn_q_a.weight", 8, &[4096, 1024])?;
++        let layer19_q_a_norm = exact_tensor(model, "blk.19.attn_q_a_norm.weight", 0, &[1024])?;
++        let layer19_kv = exact_tensor(model, "blk.19.attn_kv.weight", 8, &[4096, 512])?;
++        let layer19_kv_norm = exact_tensor(model, "blk.19.attn_kv_a_norm.weight", 0, &[512])?;
++        let layer19_q_b = exact_tensor(model, "blk.19.attn_q_b.weight", 8, &[1024, 32768])?;
++        let layer19_attn_ape =
++            exact_tensor(model, "blk.19.attn_compressor_ape.weight", 1, &[512, 128])?;
++        let layer19_attn_kv =
++            exact_tensor(model, "blk.19.attn_compressor_kv.weight", 1, &[4096, 512])?;
++        let layer19_attn_gate =
++            exact_tensor(model, "blk.19.attn_compressor_gate.weight", 1, &[4096, 512])?;
++        let layer19_attn_compressor_norm =
++            exact_tensor(model, "blk.19.attn_compressor_norm.weight", 0, &[512])?;
++        let layer19_sinks = exact_tensor(model, "blk.19.attn_sinks.weight", 0, &[64])?;
++        let layer19_output_a =
++            exact_tensor(model, "blk.19.attn_output_a.weight", 8, &[4096, 8192])?;
++        let layer19_output_b =
++            exact_tensor(model, "blk.19.attn_output_b.weight", 8, &[8192, 4096])?;
++        let layer19_ffn_hc_fn = exact_tensor(model, "blk.19.hc_ffn_fn.weight", 1, &[16384, 24])?;
++        let layer19_ffn_hc_scale = exact_tensor(model, "blk.19.hc_ffn_scale.weight", 0, &[3])?;
++        let layer19_ffn_hc_base = exact_tensor(model, "blk.19.hc_ffn_base.weight", 0, &[24])?;
++        let layer19_ffn_norm = exact_tensor(model, "blk.19.ffn_norm.weight", 0, &[4096])?;
++        let layer19_router_gate =
++            exact_tensor(model, "blk.19.ffn_gate_inp.weight", 1, &[4096, 256])?;
++        let layer19_router_bias = exact_tensor(model, "blk.19.exp_probs_b.bias", 0, &[256])?;
++        let layer19_routed_gate =
++            exact_tensor(model, "blk.19.ffn_gate_exps.weight", 16, &[4096, 2048, 256])?;
++        let layer19_routed_up =
++            exact_tensor(model, "blk.19.ffn_up_exps.weight", 16, &[4096, 2048, 256])?;
++        let layer19_routed_down =
++            exact_tensor(model, "blk.19.ffn_down_exps.weight", 10, &[2048, 4096, 256])?;
++        let layer19_shared_gate =
++            exact_tensor(model, "blk.19.ffn_gate_shexp.weight", 8, &[4096, 2048])?;
++        let layer19_shared_up =
++            exact_tensor(model, "blk.19.ffn_up_shexp.weight", 8, &[4096, 2048])?;
++        let layer19_shared_down =
++            exact_tensor(model, "blk.19.ffn_down_shexp.weight", 8, &[2048, 4096])?;
+         let weights = RawPrefillLayer2AttentionWeights {
+             q_b_offset: q_b.absolute_offset,
+             q_b_bytes: q_b.bytes,
+@@ -15990,6 +16381,71 @@ mod imp {
+                 shared_down_offset: layer18_shared_down.absolute_offset,
+                 shared_down_bytes: layer18_shared_down.bytes,
+             },
++            layer19_kvnorm: RawPrefillKvnormWeights {
++                ingress: RawPrefillAttentionIngressWeights {
++                    hc_fn_offset: layer19_hc_fn.absolute_offset,
++                    hc_fn_bytes: layer19_hc_fn.bytes,
++                    hc_scale_offset: layer19_hc_scale.absolute_offset,
++                    hc_scale_bytes: layer19_hc_scale.bytes,
++                    hc_base_offset: layer19_hc_base.absolute_offset,
++                    hc_base_bytes: layer19_hc_base.bytes,
++                    norm_offset: layer19_norm.absolute_offset,
++                    norm_bytes: layer19_norm.bytes,
++                    q_a_offset: layer19_q_a.absolute_offset,
++                    q_a_bytes: layer19_q_a.bytes,
++                },
++                q_a_norm_offset: layer19_q_a_norm.absolute_offset,
++                q_a_norm_bytes: layer19_q_a_norm.bytes,
++                kv_offset: layer19_kv.absolute_offset,
++                kv_bytes: layer19_kv.bytes,
++                kv_norm_offset: layer19_kv_norm.absolute_offset,
++                kv_norm_bytes: layer19_kv_norm.bytes,
++            },
++            layer19_q_b_offset: layer19_q_b.absolute_offset,
++            layer19_q_b_bytes: layer19_q_b.bytes,
++            layer19_compressor: RawPrefillCompressorWeights {
++                attn_ape_offset: layer19_attn_ape.absolute_offset,
++                attn_ape_bytes: layer19_attn_ape.bytes,
++                attn_kv_offset: layer19_attn_kv.absolute_offset,
++                attn_kv_bytes: layer19_attn_kv.bytes,
++                attn_gate_offset: layer19_attn_gate.absolute_offset,
++                attn_gate_bytes: layer19_attn_gate.bytes,
++                attn_norm_offset: layer19_attn_compressor_norm.absolute_offset,
++                attn_norm_bytes: layer19_attn_compressor_norm.bytes,
++                ..RawPrefillCompressorWeights::default()
++            },
++            layer19_attn_sinks_offset: layer19_sinks.absolute_offset,
++            layer19_attn_sinks_bytes: layer19_sinks.bytes,
++            layer19_attn_output_a_offset: layer19_output_a.absolute_offset,
++            layer19_attn_output_a_bytes: layer19_output_a.bytes,
++            layer19_attn_output_b_offset: layer19_output_b.absolute_offset,
++            layer19_attn_output_b_bytes: layer19_output_b.bytes,
++            layer19_ffn: RawPrefillFfnWeights {
++                hc_fn_offset: layer19_ffn_hc_fn.absolute_offset,
++                hc_fn_bytes: layer19_ffn_hc_fn.bytes,
++                hc_scale_offset: layer19_ffn_hc_scale.absolute_offset,
++                hc_scale_bytes: layer19_ffn_hc_scale.bytes,
++                hc_base_offset: layer19_ffn_hc_base.absolute_offset,
++                hc_base_bytes: layer19_ffn_hc_base.bytes,
++                norm_offset: layer19_ffn_norm.absolute_offset,
++                norm_bytes: layer19_ffn_norm.bytes,
++                router_gate_offset: layer19_router_gate.absolute_offset,
++                router_gate_bytes: layer19_router_gate.bytes,
++                router_hash_offset: layer19_router_bias.absolute_offset,
++                router_hash_bytes: layer19_router_bias.bytes,
++                routed_gate_offset: layer19_routed_gate.absolute_offset,
++                routed_gate_bytes: layer19_routed_gate.bytes,
++                routed_up_offset: layer19_routed_up.absolute_offset,
++                routed_up_bytes: layer19_routed_up.bytes,
++                routed_down_offset: layer19_routed_down.absolute_offset,
++                routed_down_bytes: layer19_routed_down.bytes,
++                shared_gate_offset: layer19_shared_gate.absolute_offset,
++                shared_gate_bytes: layer19_shared_gate.bytes,
++                shared_up_offset: layer19_shared_up.absolute_offset,
++                shared_up_bytes: layer19_shared_up.bytes,
++                shared_down_offset: layer19_shared_down.absolute_offset,
++                shared_down_bytes: layer19_shared_down.bytes,
++            },
+         };
+         let mut actual = vec![0.0_f32; expected.len()];
+         let mut actual_hc = vec![0.0_f32; 2048 * 4 * 4096];
+@@ -16450,6 +16906,36 @@ mod imp {
+         let mut actual_layer18_router_weights = vec![0.0_f32; 32 * 6];
+         let mut actual_layer18_routed_out = vec![0.0_f32; 32 * 4096];
+         let mut actual_layer18_shared_out = vec![0.0_f32; 32 * 4096];
++        let mut actual_layer19_qkv: [Vec<f32>; 10] = [
++            vec![0.0_f32; 32 * 4096],
++            vec![0.0_f32; 32 * 4096],
++            vec![0.0_f32; 32 * 1024],
++            vec![0.0_f32; 32 * 1024],
++            vec![0.0_f32; 32 * 512],
++            vec![0.0_f32; 32 * 512],
++            vec![0.0_f32; 32 * 32768],
++            vec![0.0_f32; 32 * 32768],
++            vec![0.0_f32; 32 * 512],
++            vec![0.0_f32; 32 * 512],
++        ];
++        let layer19_qkv_pointers = actual_layer19_qkv
++            .each_mut()
++            .map(|tensor| tensor.as_mut_ptr());
++        let mut actual_layer19_attn_compressed = vec![0.0_f32; 16 * 512];
++        let mut actual_layer19_attn_state_kv = vec![0.0_f32; 128 * 512];
++        let mut actual_layer19_attn_state_score = vec![0_i32; 128 * 512];
++        let mut actual_layer19_kqv_out_row0 = vec![0.0_f32; 32_768];
++        let mut actual_layer19_kqv_back_row0 = vec![0.0_f32; 32_768];
++        let mut actual_layer19_attn_low_row0 = vec![0.0_f32; 8_192];
++        let mut actual_layer19_attention = vec![0.0_f32; 2048 * 4096];
++        let mut actual_layer19_after_attention_hc = vec![0.0_f32; 2048 * 4 * 4096];
++        let mut actual_layer19_after_ffn_hc = vec![0.0_f32; 2048 * 4 * 4096];
++        let mut actual_layer19_ffn_cur_final_tile = vec![0.0_f32; 32 * 4096];
++        let mut actual_layer19_ffn_norm_final_tile = vec![0.0_f32; 32 * 4096];
++        let mut actual_layer19_router_selected = vec![0_i32; 32 * 6];
++        let mut actual_layer19_router_weights = vec![0.0_f32; 32 * 6];
++        let mut actual_layer19_routed_out = vec![0.0_f32; 32 * 4096];
++        let mut actual_layer19_shared_out = vec![0.0_f32; 32 * 4096];
+         let mut raw = RawPrefillLayer2AttentionResult::default();
+         let mut error = [0 as c_char; ERROR_BYTES];
+         let succeeded = unsafe {
+@@ -16838,6 +17324,31 @@ mod imp {
+                 actual_layer18_router_weights.as_mut_ptr(),
+                 actual_layer18_routed_out.as_mut_ptr(),
+                 actual_layer18_shared_out.as_mut_ptr(),
++                layer19_qkv_pointers[0],
++                layer19_qkv_pointers[1],
++                layer19_qkv_pointers[2],
++                layer19_qkv_pointers[3],
++                layer19_qkv_pointers[4],
++                layer19_qkv_pointers[5],
++                layer19_qkv_pointers[6],
++                layer19_qkv_pointers[7],
++                layer19_qkv_pointers[8],
++                layer19_qkv_pointers[9],
++                actual_layer19_attn_compressed.as_mut_ptr(),
++                actual_layer19_attn_state_kv.as_mut_ptr(),
++                actual_layer19_attn_state_score.as_mut_ptr(),
++                actual_layer19_kqv_out_row0.as_mut_ptr(),
++                actual_layer19_kqv_back_row0.as_mut_ptr(),
++                actual_layer19_attn_low_row0.as_mut_ptr(),
++                actual_layer19_attention.as_mut_ptr(),
++                actual_layer19_after_attention_hc.as_mut_ptr(),
++                actual_layer19_after_ffn_hc.as_mut_ptr(),
++                actual_layer19_ffn_cur_final_tile.as_mut_ptr(),
++                actual_layer19_ffn_norm_final_tile.as_mut_ptr(),
++                actual_layer19_router_selected.as_mut_ptr(),
++                actual_layer19_router_weights.as_mut_ptr(),
++                actual_layer19_routed_out.as_mut_ptr(),
++                actual_layer19_shared_out.as_mut_ptr(),
+                 &mut raw,
+                 error.as_mut_ptr(),
+                 error.len(),
+@@ -19427,6 +19938,200 @@ mod imp {
+                 "prefill layer-18 FFN HC post full-2K checksum mismatch",
+             ));
+         }
++        for ((label, actual), expected) in [
++            "HC attention ingress",
++            "attention norm",
++            "Q-Lora",
++            "Q-Lora norm",
++            "KV raw",
++            "KV norm",
++            "Q raw",
++            "Q current",
++            "KV rope",
++            "KV current",
++        ]
++        .into_iter()
++        .zip(&actual_layer19_qkv)
++        .zip(&expected_layer19_qkv)
++        {
++            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
++                if actual.to_bits() != expected.to_bits() {
++                    return Err(Error::invalid(format!(
++                        "prefill layer-19 {label} C0 mismatch at final-tile element {index}: actual={:#010x} expected={:#010x}",
++                        actual.to_bits(), expected.to_bits(),
++                    )));
++                }
++            }
++        }
++        for (label, actual, expected) in [
++            (
++                "compressed KV",
++                &actual_layer19_attn_compressed,
++                &expected_layer19_compressor.0,
++            ),
++            (
++                "recurrent KV state",
++                &actual_layer19_attn_state_kv,
++                &expected_layer19_compressor.1,
++            ),
++        ] {
++            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
++                if actual.to_bits() != expected.to_bits() {
++                    return Err(Error::invalid(format!(
++                        "prefill layer-19 ratio-128 {label} C0 mismatch at element {index}: actual={:#010x} expected={:#010x}",
++                        actual.to_bits(), expected.to_bits(),
++                    )));
++                }
++            }
++        }
++        for (index, (actual, expected)) in actual_layer19_attn_state_score
++            .iter()
++            .zip(&expected_layer19_compressor.2)
++            .enumerate()
++        {
++            if actual != expected {
++                return Err(Error::invalid(format!(
++                    "prefill layer-19 ratio-128 recurrent score state C0 mismatch at element {index}: actual={:#010x} expected={:#010x}",
++                    *actual as u32, *expected as u32,
++                )));
++            }
++        }
++        for (label, actual, expected) in [
++            (
++                "KQV output row 0",
++                &actual_layer19_kqv_out_row0,
++                &expected_layer19_attention_diagnostics[0],
++            ),
++            (
++                "KQV back row 0",
++                &actual_layer19_kqv_back_row0,
++                &expected_layer19_attention_diagnostics[1],
++            ),
++            (
++                "attention low row 0",
++                &actual_layer19_attn_low_row0,
++                &expected_layer19_attention_diagnostics[2],
++            ),
++        ] {
++            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
++                if actual.to_bits() != expected.to_bits() {
++                    return Err(Error::invalid(format!(
++                        "prefill layer-19 {label} C0 mismatch at element {index}: actual={:#010x} expected={:#010x}",
++                        actual.to_bits(), expected.to_bits(),
++                    )));
++                }
++            }
++        }
++        for (index, (actual, expected)) in actual_layer19_attention
++            .iter()
++            .zip(&expected_layer19_attention.0)
++            .enumerate()
++        {
++            if actual.to_bits() != expected.to_bits() {
++                return Err(Error::invalid(format!(
++                    "prefill layer-19 dense mixed-attention C0 mismatch at element {index}: actual={:#010x} expected={:#010x}",
++                    actual.to_bits(), expected.to_bits(),
++                )));
++            }
++        }
++        let layer19_hc_final_tile = &actual_layer19_after_attention_hc
++            [actual_layer19_after_attention_hc.len() - expected_layer19_attention.1.len()..];
++        for (index, (actual, expected)) in layer19_hc_final_tile
++            .iter()
++            .zip(&expected_layer19_attention.1)
++            .enumerate()
++        {
++            if actual.to_bits() != expected.to_bits() {
++                return Err(Error::invalid(format!(
++                    "prefill layer-19 attention HC post C0 mismatch at final-tile element {index}: actual={:#010x} expected={:#010x}",
++                    actual.to_bits(), expected.to_bits(),
++                )));
++            }
++        }
++        if checksum_f32(&actual_layer19_after_attention_hc)
++            != PREFILL_LAYER19_HC_ATTN_POST_FULL_CHECKSUM
++        {
++            return Err(Error::invalid(
++                "prefill layer-19 attention HC post full-2K checksum mismatch",
++            ));
++        }
++        for (label, actual, expected) in [
++            (
++                "HC collapse",
++                &actual_layer19_ffn_cur_final_tile,
++                &expected_layer19_complete.ffn_cur,
++            ),
++            (
++                "learned norm",
++                &actual_layer19_ffn_norm_final_tile,
++                &expected_layer19_complete.ffn_norm,
++            ),
++        ] {
++            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
++                if actual.to_bits() != expected.to_bits() {
++                    return Err(Error::invalid(format!(
++                        "prefill layer-19 FFN {label} C0 mismatch at final-tile element {index}: actual={:#010x} expected={:#010x}",
++                        actual.to_bits(), expected.to_bits(),
++                    )));
++                }
++            }
++        }
++        for (index, (actual, expected)) in actual_layer19_router_selected
++            .iter()
++            .zip(&expected_layer19_complete.router_selected)
++            .enumerate()
++        {
++            if actual != expected {
++                return Err(Error::invalid(format!(
++                    "prefill layer-19 router selection C0 mismatch at final-tile element {index}: actual={actual} expected={expected}",
++                )));
++            }
++        }
++        for (label, actual, expected) in [
++            (
++                "router weights",
++                &actual_layer19_router_weights,
++                &expected_layer19_complete.router_weights,
++            ),
++            (
++                "routed output",
++                &actual_layer19_routed_out,
++                &expected_layer19_complete.routed_out,
++            ),
++            (
++                "shared output",
++                &actual_layer19_shared_out,
++                &expected_layer19_complete.shared_out,
++            ),
++        ] {
++            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
++                if actual.to_bits() != expected.to_bits() {
++                    return Err(Error::invalid(format!(
++                        "prefill layer-19 {label} C0 mismatch at final-tile element {index}: actual={:#010x} expected={:#010x}",
++                        actual.to_bits(), expected.to_bits(),
++                    )));
++                }
++            }
++        }
++        let layer19_ffn_hc_final_tile = &actual_layer19_after_ffn_hc
++            [actual_layer19_after_ffn_hc.len() - expected_layer19_complete.hc_post.len()..];
++        for (index, (actual, expected)) in layer19_ffn_hc_final_tile
++            .iter()
++            .zip(&expected_layer19_complete.hc_post)
++            .enumerate()
++        {
++            if actual.to_bits() != expected.to_bits() {
++                return Err(Error::invalid(format!(
++                    "prefill layer-19 FFN HC post C0 mismatch at final-tile element {index}: actual={:#010x} expected={:#010x}",
++                    actual.to_bits(), expected.to_bits(),
++                )));
++            }
++        }
++        if checksum_f32(&actual_layer19_after_ffn_hc) != PREFILL_LAYER19_HC_FFN_POST_FULL_CHECKSUM {
++            return Err(Error::invalid(
++                "prefill layer-19 FFN HC post full-2K checksum mismatch",
++            ));
++        }
+         for (index, (actual, expected)) in actual_router_selected
+             .iter()
+             .zip(&expected_router_selected)
+@@ -19537,9 +20242,9 @@ mod imp {
+             || raw.raw_kv_rows != 2048
+             || raw.compressed_kv_rows != 512
+             || raw.layer3_compressed_kv_rows != 16
+-            || raw.dispatches != 968
+-            || raw.wrapped_model_ranges != 496
+-            || raw.pointer_matches != 496
++            || raw.dispatches != 1015
++            || raw.wrapped_model_ranges != 524
++            || raw.pointer_matches != 524
+         {
+             return Err(Error::invalid(
+                 "Metal prefill layer-2 attention returned an unexpected schedule or mapping",
+@@ -19606,6 +20311,10 @@ mod imp {
+             layer18_compressor_fixture_id: PREFILL_LAYER18_COMPRESSOR_FIXTURE_ID,
+             layer18_attention_fixture_id: PREFILL_LAYER18_ATTENTION_FIXTURE_ID,
+             layer18_complete_fixture_id: PREFILL_LAYER18_COMPLETE_FIXTURE_ID,
++            layer19_qkv_fixture_id: PREFILL_LAYER19_QKV_FIXTURE_ID,
++            layer19_compressor_fixture_id: PREFILL_LAYER19_COMPRESSOR_FIXTURE_ID,
++            layer19_attention_fixture_id: PREFILL_LAYER19_ATTENTION_FIXTURE_ID,
++            layer19_complete_fixture_id: PREFILL_LAYER19_COMPLETE_FIXTURE_ID,
+             rows: raw.rows,
+             raw_kv_rows: raw.raw_kv_rows,
+             compressed_kv_rows: raw.compressed_kv_rows,
+@@ -19763,6 +20472,17 @@ mod imp {
+             layer18_attention_output_checksum: checksum_f32(&actual_layer18_attention),
+             layer18_after_attention_hc_checksum: checksum_f32(&actual_layer18_after_attention_hc),
+             layer18_after_ffn_hc_checksum: checksum_f32(&actual_layer18_after_ffn_hc),
++            layer19_qkv_checksums: actual_layer19_qkv
++                .each_ref()
++                .map(|tensor| checksum_f32(tensor)),
++            layer19_compressor_checksums: [
++                checksum_f32(&actual_layer19_attn_compressed),
++                checksum_f32(&actual_layer19_attn_state_kv),
++                checksum_i32(&actual_layer19_attn_state_score),
++            ],
++            layer19_attention_output_checksum: checksum_f32(&actual_layer19_attention),
++            layer19_after_attention_hc_checksum: checksum_f32(&actual_layer19_after_attention_hc),
++            layer19_after_ffn_hc_checksum: checksum_f32(&actual_layer19_after_ffn_hc),
+         })
+     }
+ 
+@@ -24807,13 +25527,17 @@ mod tests {
+             layer18_compressor_fixture_id: PREFILL_LAYER18_COMPRESSOR_FIXTURE_ID,
+             layer18_attention_fixture_id: PREFILL_LAYER18_ATTENTION_FIXTURE_ID,
+             layer18_complete_fixture_id: PREFILL_LAYER18_COMPLETE_FIXTURE_ID,
++            layer19_qkv_fixture_id: PREFILL_LAYER19_QKV_FIXTURE_ID,
++            layer19_compressor_fixture_id: PREFILL_LAYER19_COMPRESSOR_FIXTURE_ID,
++            layer19_attention_fixture_id: PREFILL_LAYER19_ATTENTION_FIXTURE_ID,
++            layer19_complete_fixture_id: PREFILL_LAYER19_COMPLETE_FIXTURE_ID,
+             rows: 2048,
+             raw_kv_rows: 2048,
+             compressed_kv_rows: 512,
+             layer3_compressed_kv_rows: 16,
+-            dispatches: 968,
+-            wrapped_model_ranges: 496,
+-            pointer_matches: 496,
++            dispatches: 1015,
++            wrapped_model_ranges: 524,
++            pointer_matches: 524,
+             wall_ms: 196.0,
+             gpu_ms: 169.0,
+             output_checksum: checksum_f32(&prefill_layer2_attention_fixture().unwrap()),
+@@ -25006,6 +25730,21 @@ mod tests {
+             layer18_attention_output_checksum: PREFILL_LAYER18_ATTENTION_OUTPUT_CHECKSUM,
+             layer18_after_attention_hc_checksum: PREFILL_LAYER18_HC_ATTN_POST_FULL_CHECKSUM,
+             layer18_after_ffn_hc_checksum: PREFILL_LAYER18_HC_FFN_POST_FULL_CHECKSUM,
++            layer19_qkv_checksums: prefill_layer19_qkv_final_tile_fixture()
++                .unwrap()
++                .each_ref()
++                .map(|tensor| checksum_f32(tensor)),
++            layer19_compressor_checksums: {
++                let fixture = prefill_layer19_compressor_fixture().unwrap();
++                [
++                    checksum_f32(&fixture.0),
++                    checksum_f32(&fixture.1),
++                    checksum_i32(&fixture.2),
++                ]
++            },
++            layer19_attention_output_checksum: PREFILL_LAYER19_ATTENTION_OUTPUT_CHECKSUM,
++            layer19_after_attention_hc_checksum: PREFILL_LAYER19_HC_ATTN_POST_FULL_CHECKSUM,
++            layer19_after_ffn_hc_checksum: PREFILL_LAYER19_HC_FFN_POST_FULL_CHECKSUM,
+         }
+     }
+ 
+@@ -26355,8 +27094,8 @@ mod tests {
+         )));
+         assert!(text.contains("\"compressed_kv_rows\": 512"));
+         assert!(text.contains("\"sparse_indexer_topk\": false"));
+-        assert!(text.contains("\"terminal_dispatches\": 968"));
+-        assert!(text.contains("\"wrapped_terminal_model_ranges\": 496"));
++        assert!(text.contains("\"terminal_dispatches\": 1015"));
++        assert!(text.contains("\"wrapped_terminal_model_ranges\": 524"));
+         assert!(text.contains("\"layer3_compressor_ratio\": 128"));
+         assert!(text.contains("\"layer3_compressed_rows\": 16"));
+         assert!(text.contains("\"layer7_compressor_ratio\": 128"));
+@@ -26379,9 +27118,9 @@ mod tests {
+         assert!(text.contains("\"layer3_ffn_hc_post_c0_bitwise_match\": true"));
+         assert!(text.contains("\"complete_layer3_ffn_claim\": true"));
+         assert!(text.contains("\"complete_layer3_prefill_claim\": true"));
+-        assert!(text.contains("\"output_boundary\": \"layer18_ffn_hc_post\""));
++        assert!(text.contains("\"output_boundary\": \"layer19_ffn_hc_post\""));
+         assert!(text.contains(
+-            "\"complete_layers\": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]"
++            "\"complete_layers\": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]"
+         ));
+         assert!(text.contains("\"downstream_layer\": null"));
+         assert!(text.contains("\"layer4_qkv_state_c0_bitwise_match\": true"));
+@@ -26566,6 +27305,18 @@ mod tests {
+         assert!(text.contains("\"layer18_attention_hc_post_c0_bitwise_match\": true"));
+         assert!(text.contains("\"layer18_ffn_hc_post_c0_bitwise_match\": true"));
+         assert!(text.contains("\"complete_layer18_prefill_claim\": true"));
++        assert!(text.contains("\"layer19_compressor_ratio\": 128"));
++        assert!(text.contains("\"layer19_compressed_rows\": 16"));
++        assert!(text.contains("\"layer19_qkv_dispatches\": 10"));
++        assert!(text.contains("\"layer19_ratio128_compressor_dispatches\": 7"));
++        assert!(text.contains("\"layer19_dense_attention_dispatches\": 9"));
++        assert!(text.contains("\"layer19_ffn_dispatches\": 21"));
++        assert!(text.contains("\"layer19_qkv_state_c0_bitwise_match\": true"));
++        assert!(text.contains("\"layer19_ratio128_compressor_c0_bitwise_match\": true"));
++        assert!(text.contains("\"layer19_attention_output_c0_bitwise_match\": true"));
++        assert!(text.contains("\"layer19_attention_hc_post_c0_bitwise_match\": true"));
++        assert!(text.contains("\"layer19_ffn_hc_post_c0_bitwise_match\": true"));
++        assert!(text.contains("\"complete_layer19_prefill_claim\": true"));
+         assert!(text.contains("\"sparse_ratio4_decode_claim\": false"));
+     }
+ 
+@@ -27641,6 +28392,65 @@ mod tests {
+         assert_eq!(fixture.hc_post.len(), 32 * 4 * 4096);
+     }
+ 
++    #[test]
++    fn prefill_layer19_qkv_fixture_has_target_shapes() {
++        let tensors = prefill_layer19_qkv_final_tile_fixture().unwrap();
++        assert_eq!(
++            tensors.each_ref().map(|tensor| tensor.len()),
++            [
++                32 * 4096,
++                32 * 4096,
++                32 * 1024,
++                32 * 1024,
++                32 * 512,
++                32 * 512,
++                32 * 32768,
++                32 * 32768,
++                32 * 512,
++                32 * 512,
++            ]
++        );
++        assert!(tensors.iter().flatten().all(|value| value.is_finite()));
++    }
++
++    #[test]
++    fn prefill_layer19_compressor_fixture_has_target_shapes() {
++        let (compressed, state_kv, state_score) = prefill_layer19_compressor_fixture().unwrap();
++        assert_eq!(compressed.len(), 16 * 512);
++        assert_eq!(state_kv.len(), 128 * 512);
++        assert_eq!(state_score.len(), 128 * 512);
++        assert!(compressed.iter().all(|value| value.is_finite()));
++        assert!(state_kv.iter().all(|value| value.to_bits() == 0));
++        assert!(state_score.iter().all(|value| *value as u32 == 0xff80_0000));
++    }
++
++    #[test]
++    fn prefill_layer19_attention_fixture_has_target_shapes() {
++        let (attention, hc_post) = prefill_layer19_attention_fixture().unwrap();
++        let diagnostics = prefill_layer19_attention_diagnostics_fixture().unwrap();
++        assert_eq!(attention.len(), 2048 * 4096);
++        assert_eq!(hc_post.len(), 32 * 4 * 4096);
++        assert_eq!(
++            diagnostics.each_ref().map(|tensor| tensor.len()),
++            [32_768, 32_768, 8_192]
++        );
++        assert!(attention.iter().all(|value| value.is_finite()));
++        assert!(hc_post.iter().all(|value| value.is_finite()));
++        assert!(diagnostics.iter().flatten().all(|value| value.is_finite()));
++    }
++
++    #[test]
++    fn prefill_layer19_complete_fixture_has_target_shapes() {
++        let fixture = prefill_layer19_complete_final_tile_fixture().unwrap();
++        assert_eq!(fixture.ffn_cur.len(), 32 * 4096);
++        assert_eq!(fixture.ffn_norm.len(), 32 * 4096);
++        assert_eq!(fixture.router_selected.len(), 32 * 6);
++        assert_eq!(fixture.router_weights.len(), 32 * 6);
++        assert_eq!(fixture.routed_out.len(), 32 * 4096);
++        assert_eq!(fixture.shared_out.len(), 32 * 4096);
++        assert_eq!(fixture.hc_post.len(), 32 * 4 * 4096);
++    }
++
+     #[test]
+     fn prefill_layer4_attention_fixture_has_target_shapes() {
+         let (attention, hc_post) = prefill_layer4_attention_fixture().unwrap();
+diff --git a/rust-star/runtime/src/metal_shim.h b/rust-star/runtime/src/metal_shim.h
+index f763d20..2ac6e8d 100644
+--- a/rust-star/runtime/src/metal_shim.h
++++ b/rust-star/runtime/src/metal_shim.h
+@@ -254,6 +254,13 @@ typedef struct rust_star_metal_prefill_layer2_attention_weights {
+     uint64_t layer18_attn_output_a_offset, layer18_attn_output_a_bytes;
+     uint64_t layer18_attn_output_b_offset, layer18_attn_output_b_bytes;
+     rust_star_metal_prefill_ffn_weights layer18_ffn;
++    rust_star_metal_prefill_kvnorm_weights layer19_kvnorm;
++    uint64_t layer19_q_b_offset, layer19_q_b_bytes;
++    rust_star_metal_prefill_compressor_weights layer19_compressor;
++    uint64_t layer19_attn_sinks_offset, layer19_attn_sinks_bytes;
++    uint64_t layer19_attn_output_a_offset, layer19_attn_output_a_bytes;
++    uint64_t layer19_attn_output_b_offset, layer19_attn_output_b_bytes;
++    rust_star_metal_prefill_ffn_weights layer19_ffn;
+ 
+ } rust_star_metal_prefill_layer2_attention_weights;
+ 
+@@ -930,6 +937,31 @@ int rust_star_metal_run_prefill_layer2_attention(
+     float *layer18_router_weights_final_tile,
+     float *layer18_routed_out_final_tile,
+     float *layer18_shared_out_final_tile,
++    float *layer19_hc_attn_pre_final_tile,
++    float *layer19_attn_norm_final_tile,
++    float *layer19_q_lora_final_tile,
++    float *layer19_q_lora_norm_final_tile,
++    float *layer19_kv_raw_final_tile,
++    float *layer19_kv_norm_final_tile,
++    float *layer19_q_raw_final_tile,
++    float *layer19_q_cur_final_tile,
++    float *layer19_kv_rope_final_tile,
++    float *layer19_kv_cur_final_tile,
++    float *layer19_attn_compressed,
++    float *layer19_attn_state_kv,
++    int32_t *layer19_attn_state_score,
++    float *layer19_kqv_out_row0,
++    float *layer19_kqv_back_row0,
++    float *layer19_attn_low_row0,
++    float *layer19_attention_output,
++    float *layer19_after_attention_hc,
++    float *layer19_after_ffn_hc,
++    float *layer19_ffn_cur_final_tile,
++    float *layer19_ffn_norm_final_tile,
++    int32_t *layer19_router_selected_final_tile,
++    float *layer19_router_weights_final_tile,
++    float *layer19_routed_out_final_tile,
++    float *layer19_shared_out_final_tile,
+     rust_star_metal_prefill_layer2_attention_result *result,
+     char *error,
+     size_t error_bytes);
+diff --git a/rust-star/runtime/src/metal_shim.m b/rust-star/runtime/src/metal_shim.m
+index 3cb6a16..a804e72 100644
+--- a/rust-star/runtime/src/metal_shim.m
++++ b/rust-star/runtime/src/metal_shim.m
+@@ -415,6 +415,15 @@ @interface RustStarMetalContext : NSObject
+ @property(nonatomic, strong) id<MTLBuffer> prefillLayer18IndexerStateScore;
+ @property(nonatomic, strong) id<MTLBuffer> prefillLayer18AfterAttentionHc;
+ @property(nonatomic, strong) id<MTLBuffer> prefillLayer18AfterFfnHc;
++@property(nonatomic, strong) id<MTLBuffer> prefillLayer19FullQ;
++@property(nonatomic, strong) id<MTLBuffer> prefillLayer19FullKv;
++@property(nonatomic, strong) id<MTLBuffer> prefillLayer19InputHc;
++@property(nonatomic, strong) id<MTLBuffer> prefillLayer19AttnSplit;
++@property(nonatomic, strong) id<MTLBuffer> prefillLayer19AttnCompressed;
++@property(nonatomic, strong) id<MTLBuffer> prefillLayer19AttnStateKv;
++@property(nonatomic, strong) id<MTLBuffer> prefillLayer19AttnStateScore;
++@property(nonatomic, strong) id<MTLBuffer> prefillLayer19AfterAttentionHc;
++@property(nonatomic, strong) id<MTLBuffer> prefillLayer19AfterFfnHc;
+ @property(nonatomic, assign) uint32_t prefillKvRows;
+ @property(nonatomic, assign) double chainedWallEnd;
+ @property(nonatomic, assign) BOOL chainedReady;
+@@ -5705,6 +5714,31 @@ int rust_star_metal_run_prefill_layer2_attention(
+     float *layer18_router_weights_final_tile,
+     float *layer18_routed_out_final_tile,
+     float *layer18_shared_out_final_tile,
++    float *layer19_hc_attn_pre_final_tile,
++    float *layer19_attn_norm_final_tile,
++    float *layer19_q_lora_final_tile,
++    float *layer19_q_lora_norm_final_tile,
++    float *layer19_kv_raw_final_tile,
++    float *layer19_kv_norm_final_tile,
++    float *layer19_q_raw_final_tile,
++    float *layer19_q_cur_final_tile,
++    float *layer19_kv_rope_final_tile,
++    float *layer19_kv_cur_final_tile,
++    float *layer19_attn_compressed,
++    float *layer19_attn_state_kv,
++    int32_t *layer19_attn_state_score,
++    float *layer19_kqv_out_row0,
++    float *layer19_kqv_back_row0,
++    float *layer19_attn_low_row0,
++    float *layer19_attention_output,
++    float *layer19_after_attention_hc,
++    float *layer19_after_ffn_hc,
++    float *layer19_ffn_cur_final_tile,
++    float *layer19_ffn_norm_final_tile,
++    int32_t *layer19_router_selected_final_tile,
++    float *layer19_router_weights_final_tile,
++    float *layer19_routed_out_final_tile,
++    float *layer19_shared_out_final_tile,
+     rust_star_metal_prefill_layer2_attention_result *result,
+     char *error,
+     size_t error_bytes)
+@@ -5907,6 +5941,19 @@ int rust_star_metal_run_prefill_layer2_attention(
+         !layer18_router_selected_final_tile ||
+         !layer18_router_weights_final_tile || !layer18_routed_out_final_tile ||
+         !layer18_shared_out_final_tile ||
++        !layer19_hc_attn_pre_final_tile || !layer19_attn_norm_final_tile ||
++        !layer19_q_lora_final_tile || !layer19_q_lora_norm_final_tile ||
++        !layer19_kv_raw_final_tile || !layer19_kv_norm_final_tile ||
++        !layer19_q_raw_final_tile || !layer19_q_cur_final_tile ||
++        !layer19_kv_rope_final_tile || !layer19_kv_cur_final_tile ||
++        !layer19_attn_compressed || !layer19_attn_state_kv ||
++        !layer19_attn_state_score || !layer19_kqv_out_row0 ||
++        !layer19_kqv_back_row0 || !layer19_attn_low_row0 ||
++        !layer19_attention_output || !layer19_after_attention_hc ||
++        !layer19_after_ffn_hc || !layer19_ffn_cur_final_tile ||
++        !layer19_ffn_norm_final_tile || !layer19_router_selected_final_tile ||
++        !layer19_router_weights_final_tile || !layer19_routed_out_final_tile ||
++        !layer19_shared_out_final_tile ||
+         !result) {
+         return fail_with_message(error, error_bytes,
+             @"prefill layer-2 attention received a null input");
+@@ -6623,7 +6670,52 @@ int rust_star_metal_run_prefill_layer2_attention(
+             weights->layer18_ffn.shared_up_bytes !=
+                 2048ull*(n_embd/32u)*34u ||
+             weights->layer18_ffn.shared_down_bytes !=
++                n_embd*(2048u/32u)*34u ||
++            weights->layer19_kvnorm.ingress.hc_fn_bytes !=
++                16384ull*24ull*sizeof(uint16_t) ||
++            weights->layer19_kvnorm.ingress.hc_scale_bytes != 3u*sizeof(float) ||
++            weights->layer19_kvnorm.ingress.hc_base_bytes != 24u*sizeof(float) ||
++            weights->layer19_kvnorm.ingress.norm_bytes != n_embd*sizeof(float) ||
++            weights->layer19_kvnorm.ingress.q_a_bytes !=
++                1024ull*((uint64_t)n_embd/32u)*34u ||
++            weights->layer19_kvnorm.q_a_norm_bytes != 1024u*sizeof(float) ||
++            weights->layer19_kvnorm.kv_bytes !=
++                512ull*((uint64_t)n_embd/32u)*34u ||
++            weights->layer19_kvnorm.kv_norm_bytes != 512u*sizeof(float) ||
++            weights->layer19_q_b_bytes !=
++                (uint64_t)q_dim*(1024u/32u)*34u ||
++            weights->layer19_compressor.attn_ape_bytes !=
++                (uint64_t)layer3_compressor_ratio*layer3_compressor_width*
++                    sizeof(uint16_t) ||
++            weights->layer19_compressor.attn_kv_bytes !=
++                (uint64_t)n_embd*layer3_compressor_width*sizeof(uint16_t) ||
++            weights->layer19_compressor.attn_gate_bytes !=
++                (uint64_t)n_embd*layer3_compressor_width*sizeof(uint16_t) ||
++            weights->layer19_compressor.attn_norm_bytes !=
++                layer3_compressor_width*sizeof(float) ||
++            weights->layer19_attn_sinks_bytes != n_head*sizeof(float) ||
++            weights->layer19_attn_output_a_bytes !=
++                8ull*output_rank*((uint64_t)n_embd/32u)*34u ||
++            weights->layer19_attn_output_b_bytes !=
++                (uint64_t)n_embd*((uint64_t)(8u*output_rank)/32u)*34u ||
++            weights->layer19_ffn.hc_fn_bytes !=
++                16384ull*24ull*sizeof(uint16_t) ||
++            weights->layer19_ffn.hc_scale_bytes != 3u*sizeof(float) ||
++            weights->layer19_ffn.hc_base_bytes != 24u*sizeof(float) ||
++            weights->layer19_ffn.norm_bytes != n_embd*sizeof(float) ||
++            weights->layer19_ffn.router_gate_bytes !=
++                (uint64_t)n_embd*256u*sizeof(uint16_t) ||
++            weights->layer19_ffn.router_hash_bytes != 256u*sizeof(float) ||
++            weights->layer19_ffn.routed_gate_bytes != 256ull*2048ull*1056ull ||
++            weights->layer19_ffn.routed_up_bytes != 256ull*2048ull*1056ull ||
++            weights->layer19_ffn.routed_down_bytes != 256ull*n_embd*672ull ||
++            weights->layer19_ffn.shared_gate_bytes !=
++                2048ull*(n_embd/32u)*34u ||
++            weights->layer19_ffn.shared_up_bytes !=
++                2048ull*(n_embd/32u)*34u ||
++            weights->layer19_ffn.shared_down_bytes !=
+                 n_embd*(2048u/32u)*34u
++
+ ) {
+             return fail_with_message(error, error_bytes,
+                 @"prefill layer-2 attention tensor shapes are invalid");
+@@ -6632,7 +6724,7 @@ int rust_star_metal_run_prefill_layer2_attention(
+             !ensure_moe_output_pipelines(context, error, error_bytes)) return 0;
+         memset(result, 0, sizeof(*result));
+ 
+-        uint64_t offsets[496] = {
++        uint64_t offsets[524] = {
+             weights->q_b_offset, weights->attn_sinks_offset,
+             weights->attn_output_a_offset, weights->attn_output_b_offset,
+             weights->ffn.hc_fn_offset, weights->ffn.hc_scale_offset,
+@@ -7061,8 +7153,36 @@ int rust_star_metal_run_prefill_layer2_attention(
+             weights->layer18_ffn.shared_gate_offset,
+             weights->layer18_ffn.shared_up_offset,
+             weights->layer18_ffn.shared_down_offset,
++            weights->layer19_kvnorm.ingress.hc_fn_offset,
++            weights->layer19_kvnorm.ingress.hc_scale_offset,
++            weights->layer19_kvnorm.ingress.hc_base_offset,
++            weights->layer19_kvnorm.ingress.norm_offset,
++            weights->layer19_kvnorm.ingress.q_a_offset,
++            weights->layer19_kvnorm.q_a_norm_offset,
++            weights->layer19_kvnorm.kv_offset,
++            weights->layer19_kvnorm.kv_norm_offset,
++            weights->layer19_q_b_offset,
++            weights->layer19_compressor.attn_ape_offset,
++            weights->layer19_compressor.attn_kv_offset,
++            weights->layer19_compressor.attn_gate_offset,
++            weights->layer19_compressor.attn_norm_offset,
++            weights->layer19_attn_sinks_offset,
++            weights->layer19_attn_output_a_offset,
++            weights->layer19_attn_output_b_offset,
++            weights->layer19_ffn.hc_fn_offset,
++            weights->layer19_ffn.hc_scale_offset,
++            weights->layer19_ffn.hc_base_offset,
++            weights->layer19_ffn.norm_offset,
++            weights->layer19_ffn.router_gate_offset,
++            weights->layer19_ffn.router_hash_offset,
++            weights->layer19_ffn.routed_gate_offset,
++            weights->layer19_ffn.routed_up_offset,
++            weights->layer19_ffn.routed_down_offset,
++            weights->layer19_ffn.shared_gate_offset,
++            weights->layer19_ffn.shared_up_offset,
++            weights->layer19_ffn.shared_down_offset,
+         };
+-        uint64_t sizes[496] = {
++        uint64_t sizes[524] = {
+             weights->q_b_bytes, weights->attn_sinks_bytes,
+             weights->attn_output_a_bytes, weights->attn_output_b_bytes,
+             weights->ffn.hc_fn_bytes, weights->ffn.hc_scale_bytes,
+@@ -7491,11 +7611,39 @@ int rust_star_metal_run_prefill_layer2_attention(
+             weights->layer18_ffn.shared_gate_bytes,
+             weights->layer18_ffn.shared_up_bytes,
+             weights->layer18_ffn.shared_down_bytes,
++            weights->layer19_kvnorm.ingress.hc_fn_bytes,
++            weights->layer19_kvnorm.ingress.hc_scale_bytes,
++            weights->layer19_kvnorm.ingress.hc_base_bytes,
++            weights->layer19_kvnorm.ingress.norm_bytes,
++            weights->layer19_kvnorm.ingress.q_a_bytes,
++            weights->layer19_kvnorm.q_a_norm_bytes,
++            weights->layer19_kvnorm.kv_bytes,
++            weights->layer19_kvnorm.kv_norm_bytes,
++            weights->layer19_q_b_bytes,
++            weights->layer19_compressor.attn_ape_bytes,
++            weights->layer19_compressor.attn_kv_bytes,
++            weights->layer19_compressor.attn_gate_bytes,
++            weights->layer19_compressor.attn_norm_bytes,
++            weights->layer19_attn_sinks_bytes,
++            weights->layer19_attn_output_a_bytes,
++            weights->layer19_attn_output_b_bytes,
++            weights->layer19_ffn.hc_fn_bytes,
++            weights->layer19_ffn.hc_scale_bytes,
++            weights->layer19_ffn.hc_base_bytes,
++            weights->layer19_ffn.norm_bytes,
++            weights->layer19_ffn.router_gate_bytes,
++            weights->layer19_ffn.router_hash_bytes,
++            weights->layer19_ffn.routed_gate_bytes,
++            weights->layer19_ffn.routed_up_bytes,
++            weights->layer19_ffn.routed_down_bytes,
++            weights->layer19_ffn.shared_gate_bytes,
++            weights->layer19_ffn.shared_up_bytes,
++            weights->layer19_ffn.shared_down_bytes,
+         };
+-        id<MTLBuffer> model_buffers[496] = { nil };
+-        NSUInteger inner[496] = { 0 };
+-        BOOL matches[496] = { NO };
+-        for (uint32_t index = 0; index < 496u; index++) {
++        id<MTLBuffer> model_buffers[524] = { nil };
++        NSUInteger inner[524] = { 0 };
++        BOOL matches[524] = { NO };
++        for (uint32_t index = 0; index < 524u; index++) {
+             model_buffers[index] = wrap_model_range(
+                 context, model_mapping, model_bytes, offsets[index], sizes[index],
+                 &inner[index], &matches[index], error, error_bytes);
+@@ -9682,6 +8660,62 @@ int rust_star_metal_run_prefill_layer2_attention(
+         RUST_STAR_NEW_L2_ATTN_BUFFER(layer18_routed_out_buffer, output_bytes);
+         RUST_STAR_NEW_L2_ATTN_BUFFER(layer18_shared_out_buffer, output_bytes);
+         RUST_STAR_NEW_L2_ATTN_BUFFER(layer18_after_ffn_hc_buffer, hc_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_flat_hc_buffer, hc_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_mix_buffer, ffn_mix_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_split_buffer, ffn_mix_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_cur_buffer, output_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_norm_buffer, output_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_q_lora_buffer, layer3_q_rank_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_q_norm_buffer, layer3_q_rank_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_kv_raw_buffer, layer3_kv_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_kv_norm_buffer, layer3_kv_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_kv_norm_snapshot_buffer,
++            layer3_kv_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_kv_rope_buffer, layer3_kv_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_q_raw_buffer, q_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_q_cur_buffer, q_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_attn_projected_kv_buffer,
++            layer3_compressor_projection_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_attn_projected_score_buffer,
++            layer3_compressor_projection_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_attn_score_ape_buffer,
++            layer3_compressor_projection_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_attn_compressed_buffer,
++            layer3_compressed_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_attn_state_kv_buffer,
++            layer3_compressor_state_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_attn_state_score_buffer,
++            layer3_compressor_state_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_compressed_position_buffer,
++            layer3_compressed_rows*sizeof(int32_t));
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_kqv_out_row0_buffer,
++            q_dim*sizeof(float));
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_kqv_back_row0_buffer,
++            q_dim*sizeof(float));
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_attn_low_row0_buffer,
++            8u*output_rank*sizeof(float));
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_attention_output_buffer,
++            output_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_after_attention_hc_buffer,
++            hc_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_ffn_flat_hc_buffer, hc_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_ffn_mix_buffer, ffn_mix_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_ffn_split_buffer, ffn_mix_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_ffn_cur_buffer, output_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_ffn_norm_buffer, output_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_router_logits_buffer,
++            ffn_router_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_router_probs_buffer,
++            ffn_router_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_router_selected_buffer,
++            ffn_selected_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_router_weights_buffer,
++            ffn_selected_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_router_weight_sums_buffer,
++            rows*sizeof(float));
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_routed_out_buffer, output_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_shared_out_buffer, output_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer19_after_ffn_hc_buffer, hc_bytes);
+ 
+ #undef RUST_STAR_NEW_L2_ATTN_BUFFER
+         if (!q_buffer || !staged_kv_buffer || !mask_buffer || !block_buffer ||
+@@ -8891,7 +9095,28 @@ int rust_star_metal_run_prefill_layer2_attention(
+             !layer18_router_probs_buffer || !layer18_router_selected_buffer ||
+             !layer18_router_weights_buffer ||
+             !layer18_router_weight_sums_buffer || !layer18_routed_out_buffer ||
+-            !layer18_shared_out_buffer || !layer18_after_ffn_hc_buffer
++            !layer18_shared_out_buffer || !layer18_after_ffn_hc_buffer ||
++            !layer19_flat_hc_buffer || !layer19_mix_buffer ||
++            !layer19_split_buffer || !layer19_cur_buffer || !layer19_norm_buffer ||
++            !layer19_q_lora_buffer || !layer19_q_norm_buffer ||
++            !layer19_kv_raw_buffer || !layer19_kv_norm_buffer ||
++            !layer19_kv_norm_snapshot_buffer || !layer19_kv_rope_buffer ||
++            !layer19_q_raw_buffer || !layer19_q_cur_buffer ||
++            !layer19_attn_projected_kv_buffer ||
++            !layer19_attn_projected_score_buffer ||
++            !layer19_attn_score_ape_buffer || !layer19_attn_compressed_buffer ||
++            !layer19_attn_state_kv_buffer || !layer19_attn_state_score_buffer ||
++            !layer19_compressed_position_buffer ||
++            !layer19_kqv_out_row0_buffer || !layer19_kqv_back_row0_buffer ||
++            !layer19_attn_low_row0_buffer || !layer19_attention_output_buffer ||
++            !layer19_after_attention_hc_buffer ||
++            !layer19_ffn_flat_hc_buffer || !layer19_ffn_mix_buffer ||
++            !layer19_ffn_split_buffer || !layer19_ffn_cur_buffer ||
++            !layer19_ffn_norm_buffer || !layer19_router_logits_buffer ||
++            !layer19_router_probs_buffer || !layer19_router_selected_buffer ||
++            !layer19_router_weights_buffer ||
++            !layer19_router_weight_sums_buffer || !layer19_routed_out_buffer ||
++            !layer19_shared_out_buffer || !layer19_after_ffn_hc_buffer
+ ) {
+             return fail_with_message(error, error_bytes,
+                 @"failed to allocate prefill layer-2 attention buffers");
+@@ -9015,6 +9240,12 @@ int rust_star_metal_run_prefill_layer2_attention(
+             layer15_compressed_positions[row] =
+                 (int32_t)(row*layer3_compressor_ratio);
+         }
++        int32_t *layer19_compressed_positions =
++            layer19_compressed_position_buffer.contents;
++        for (uint32_t row = 0; row < layer3_compressed_rows; row++) {
++            layer19_compressed_positions[row] =
++                (int32_t)(row*layer3_compressor_ratio);
++        }
+         memset(layer4_attn_state_kv_buffer.contents, 0, layer4_attn_state_bytes);
+         memset(layer4_indexer_state_kv_buffer.contents, 0,
+                layer4_indexer_state_bytes);
+@@ -9180,6 +9411,15 @@ int rust_star_metal_run_prefill_layer2_attention(
+             layer15_state_score_bits[index] = 0xff800000u;
+         }
+ 
++        memset(layer19_attn_state_kv_buffer.contents, 0,
++               layer3_compressor_state_bytes);
++        uint32_t *layer19_state_score_bits =
++            layer19_attn_state_score_buffer.contents;
++        for (NSUInteger index = 0;
++             index < layer3_compressor_state_bytes/sizeof(uint32_t); index++) {
++            layer19_state_score_bits[index] = 0xff800000u;
++        }
++
+         rust_star_q8_mm_args q_b_args = {
+             .ne00=q_rank, .ne02=1,
+             .nb01=(q_rank/32u)*34u,
+@@ -16374,6 +16614,466 @@ int rust_star_metal_run_prefill_layer2_attention(
+         [encoder setBuffer:layer18_ffn_split_buffer offset:8u*sizeof(float) atIndex:4];
+         [encoder setBuffer:layer18_shared_out_buffer offset:0 atIndex:5];
+         [encoder setBuffer:layer18_after_ffn_hc_buffer offset:0 atIndex:6];
++        [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++        [encoder setComputePipelineState:context.rmsNormF32Pipeline];
++        [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
++        [encoder setBuffer:layer18_after_ffn_hc_buffer offset:0 atIndex:1];
++        [encoder setBuffer:layer18_after_ffn_hc_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer18_after_ffn_hc_buffer offset:0 atIndex:3];
++        [encoder setBuffer:layer19_flat_hc_buffer offset:0 atIndex:4];
++        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
++             threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
++
++        [encoder setComputePipelineState:context.f16PrefillPipeline];
++        [encoder setBytes:&ffn_hc_mm_args length:sizeof(ffn_hc_mm_args) atIndex:0];
++        [encoder setBuffer:model_buffers[496] offset:inner[496] atIndex:1];
++        [encoder setBuffer:layer19_flat_hc_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer19_mix_buffer offset:0 atIndex:3];
++        [encoder setThreadgroupMemoryLength:8192u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,1,1)
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
++
++        [encoder setComputePipelineState:context.hcIngressPipeline];
++        [encoder setBytes:&ffn_hc_ingress_args length:sizeof(ffn_hc_ingress_args) atIndex:0];
++        [encoder setBuffer:layer19_mix_buffer offset:0 atIndex:1];
++        [encoder setBuffer:model_buffers[497] offset:inner[497] atIndex:2];
++        [encoder setBuffer:model_buffers[498] offset:inner[498] atIndex:3];
++        [encoder setBuffer:layer18_after_ffn_hc_buffer offset:0 atIndex:4];
++        [encoder setBuffer:layer19_split_buffer offset:0 atIndex:5];
++        [encoder setBuffer:layer19_cur_buffer offset:0 atIndex:6];
++        [encoder setBuffer:model_buffers[499] offset:inner[499] atIndex:7];
++        [encoder setBuffer:layer19_norm_buffer offset:0 atIndex:8];
++        [encoder setThreadgroupMemoryLength:(n_embd+4u+32u)*sizeof(float) atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
++             threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
++
++        [encoder setComputePipelineState:context.q8PrefillPipeline];
++        [encoder setBytes:&layer5_q_a_args length:sizeof(layer5_q_a_args) atIndex:0];
++        [encoder setBuffer:model_buffers[500] offset:inner[500] atIndex:1];
++        [encoder setBuffer:layer19_norm_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer19_q_lora_buffer offset:0 atIndex:3];
++        [encoder setThreadgroupMemoryLength:6144u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,1024u/64u,1)
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
++
++        [encoder setComputePipelineState:context.q8PrefillPipeline];
++        [encoder setBytes:&layer5_kv_args length:sizeof(layer5_kv_args) atIndex:0];
++        [encoder setBuffer:model_buffers[502] offset:inner[502] atIndex:1];
++        [encoder setBuffer:layer19_norm_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer19_kv_raw_buffer offset:0 atIndex:3];
++        [encoder setThreadgroupMemoryLength:6144u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,512u/64u,1)
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
++
++        [encoder setComputePipelineState:context.qkvNormPipeline];
++        [encoder setBytes:&layer3_qkv_norm_args
++                   length:sizeof(layer3_qkv_norm_args) atIndex:0];
++        [encoder setBuffer:layer19_q_lora_buffer offset:0 atIndex:1];
++        [encoder setBuffer:model_buffers[501] offset:inner[501] atIndex:2];
++        [encoder setBuffer:layer19_q_norm_buffer offset:0 atIndex:3];
++        [encoder setBuffer:layer19_kv_raw_buffer offset:0 atIndex:4];
++        [encoder setBuffer:model_buffers[503] offset:inner[503] atIndex:5];
++        [encoder setBuffer:layer19_kv_norm_buffer offset:0 atIndex:6];
++        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows,2,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++
++        [encoder setComputePipelineState:context.q8PrefillPipeline];
++        [encoder setBytes:&layer5_q_b_args length:sizeof(layer5_q_b_args) atIndex:0];
++        [encoder setBuffer:model_buffers[504] offset:inner[504] atIndex:1];
++        [encoder setBuffer:layer19_q_norm_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer19_q_raw_buffer offset:0 atIndex:3];
++        [encoder setThreadgroupMemoryLength:6144u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,q_dim/64u,1)
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
++        [encoder endEncoding];
++
++        id<MTLBlitCommandEncoder> layer19_blit = [command blitCommandEncoder];
++        if (!layer19_blit) return fail_with_message(error, error_bytes,
++            @"failed to create prefill layer-7 Q/KV snapshot encoder");
++        [layer19_blit copyFromBuffer:layer19_q_raw_buffer sourceOffset:0
++                           toBuffer:layer19_q_cur_buffer destinationOffset:0
++                               size:q_bytes];
++        [layer19_blit copyFromBuffer:layer19_kv_norm_buffer sourceOffset:0
++                           toBuffer:layer19_kv_norm_snapshot_buffer destinationOffset:0
++                               size:layer3_kv_bytes];
++        [layer19_blit endEncoding];
++
++        encoder = [command computeCommandEncoder];
++        if (!encoder) return fail_with_message(error, error_bytes,
++            @"failed to create prefill layer-7 RoPE encoder");
++        [encoder setComputePipelineState:context.headNormRopePipeline];
++        [encoder setBytes:&q_rope_args length:sizeof(q_rope_args) atIndex:0];
++        [encoder setBuffer:layer19_q_cur_buffer offset:0 atIndex:1];
++        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(n_head,rows,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++        [encoder setComputePipelineState:context.ropeTailPipeline];
++        [encoder setBytes:&layer3_kv_rope_args
++                   length:sizeof(layer3_kv_rope_args) atIndex:0];
++        [encoder setBuffer:layer19_kv_norm_buffer offset:0 atIndex:1];
++        [encoder setBuffer:position_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer19_kv_norm_buffer offset:0 atIndex:3];
++        [encoder setBuffer:layer19_kv_norm_buffer offset:0 atIndex:4];
++        [encoder dispatchThreadgroups:MTLSizeMake(1,rows,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++        [encoder endEncoding];
++
++        layer19_blit = [command blitCommandEncoder];
++        if (!layer19_blit) return fail_with_message(error, error_bytes,
++            @"failed to create prefill layer-7 KVrope snapshot encoder");
++        [layer19_blit copyFromBuffer:layer19_kv_norm_buffer sourceOffset:0
++                           toBuffer:layer19_kv_rope_buffer destinationOffset:0
++                               size:layer3_kv_bytes];
++        [layer19_blit endEncoding];
++
++        encoder = [command computeCommandEncoder];
++        if (!encoder) return fail_with_message(error, error_bytes,
++            @"failed to create prefill layer-7 KV finalization encoder");
++        [encoder setComputePipelineState:context.compressorFp8Pipeline];
++        [encoder setBytes:&layer3_kv_fp8_args
++                   length:sizeof(layer3_kv_fp8_args) atIndex:0];
++        [encoder setBuffer:layer19_kv_norm_buffer offset:0 atIndex:1];
++        [encoder setBuffer:layer19_kv_norm_buffer offset:0 atIndex:2];
++        [encoder setThreadgroupMemoryLength:64u*sizeof(float) atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
++             threadsPerThreadgroup:MTLSizeMake(64,1,1)];
++
++#define RUST_STAR_ENCODE_LAYER11_COMPRESSOR_PROJECTION(args, index, output) do { \
++        [encoder setComputePipelineState:context.f16AlignedPrefillPipeline]; \
++        [encoder setBytes:&(args) length:sizeof(args) atIndex:0]; \
++        [encoder setBuffer:model_buffers[(index)] offset:inner[(index)] atIndex:1]; \
++        [encoder setBuffer:layer19_norm_buffer offset:0 atIndex:2]; \
++        [encoder setBuffer:(output) offset:0 atIndex:3]; \
++        [encoder setThreadgroupMemoryLength:6144u atIndex:0]; \
++        [encoder dispatchThreadgroups:MTLSizeMake( \
++                rows/32u,layer3_compressor_width/64u,1) \
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)]; \
++    } while (0)
++        RUST_STAR_ENCODE_LAYER11_COMPRESSOR_PROJECTION(
++            layer5_attn_compressor_kv_args, 506,
++            layer19_attn_projected_kv_buffer);
++        RUST_STAR_ENCODE_LAYER11_COMPRESSOR_PROJECTION(
++            layer5_attn_compressor_gate_args, 507,
++            layer19_attn_projected_score_buffer);
++#undef RUST_STAR_ENCODE_LAYER11_COMPRESSOR_PROJECTION
++
++        if (!encode_projected_compressor_batch_ratio128(
++                context, encoder,
++                layer19_attn_projected_kv_buffer,
++                layer19_attn_projected_score_buffer,
++                layer19_attn_score_ape_buffer,
++                model_buffers[505], inner[505],
++                model_buffers[508], inner[508],
++                layer19_attn_compressed_buffer,
++                layer19_compressed_position_buffer,
++                0u, rows)) {
++            return fail_with_message(error, error_bytes,
++                @"failed to encode prefill layer-7 ratio-128 compressor");
++        }
++
++        uint32_t layer19_raw_elements = raw_rows*head_dim;
++        [encoder setComputePipelineState:context.cpyF32F16Pipeline];
++        [encoder setBytes:&layer19_raw_elements
++                   length:sizeof(layer19_raw_elements) atIndex:0];
++        [encoder setBuffer:layer19_kv_norm_buffer offset:0 atIndex:1];
++        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
++        [encoder dispatchThreadgroups:MTLSizeMake(
++                (layer19_raw_elements+1023u)/1024u,1,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++
++        uint32_t layer19_compressed_elements =
++            layer3_compressed_rows*head_dim;
++        [encoder setBytes:&layer19_compressed_elements
++                   length:sizeof(layer19_compressed_elements) atIndex:0];
++        [encoder setBuffer:layer19_attn_compressed_buffer offset:0 atIndex:1];
++        [encoder setBuffer:staged_kv_buffer
++                     offset:(NSUInteger)raw_rows*head_f16_bytes atIndex:2];
++        [encoder dispatchThreadgroups:MTLSizeMake(
++                (layer19_compressed_elements+1023u)/1024u,1,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++
++        [encoder setComputePipelineState:context.flashBlkPipeline];
++        [encoder setBytes:&layer3_block_args
++                   length:sizeof(layer3_block_args) atIndex:0];
++        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:1];
++        [encoder setBuffer:block_buffer offset:0 atIndex:2];
++        [encoder dispatchThreadgroups:MTLSizeMake(
++                layer3_attention_rows/64u,256,1)
++             threadsPerThreadgroup:MTLSizeMake(32,1,1)];
++
++        [encoder setComputePipelineState:context.flashNonvecPipeline];
++        [encoder setBytes:&layer3_attention_args
++                   length:sizeof(layer3_attention_args) atIndex:0];
++        [encoder setBuffer:layer19_q_cur_buffer offset:0 atIndex:1];
++        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
++        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:3];
++        [encoder setBuffer:layer3_mask_buffer offset:0 atIndex:4];
++        [encoder setBuffer:model_buffers[509] offset:inner[509] atIndex:5];
++        [encoder setBuffer:pad_buffer offset:0 atIndex:6];
++        [encoder setBuffer:block_buffer offset:0 atIndex:7];
++        [encoder setBuffer:heads_buffer offset:0 atIndex:8];
++        [encoder setThreadgroupMemoryLength:28672u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
++             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
++        [encoder endEncoding];
++
++        id<MTLBlitCommandEncoder> layer19_attention_blit =
++            [command blitCommandEncoder];
++        if (!layer19_attention_blit) return fail_with_message(
++            error, error_bytes,
++            @"failed to create prefill layer-7 attention snapshot encoder");
++        [layer19_attention_blit copyFromBuffer:heads_buffer sourceOffset:0
++                                    toBuffer:layer19_kqv_out_row0_buffer
++                           destinationOffset:0 size:q_dim*sizeof(float)];
++        [layer19_attention_blit endEncoding];
++        encoder = [command computeCommandEncoder];
++        if (!encoder) return fail_with_message(
++            error, error_bytes,
++            @"failed to resume prefill layer-7 attention encoder");
++
++        [encoder setComputePipelineState:context.ropeTailPipeline];
++        [encoder setBytes:&inverse_args length:sizeof(inverse_args) atIndex:0];
++        [encoder setBuffer:heads_buffer offset:0 atIndex:1];
++        [encoder setBuffer:position_buffer offset:0 atIndex:2];
++        [encoder setBuffer:heads_buffer offset:0 atIndex:3];
++        [encoder setBuffer:heads_buffer offset:0 atIndex:4];
++        [encoder dispatchThreadgroups:MTLSizeMake(n_head,rows,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++
++        [encoder setComputePipelineState:context.attentionOutputBatchMapPipeline];
++        [encoder setBytes:&map_args length:sizeof(map_args) atIndex:0];
++        [encoder setBuffer:group_ids_buffer offset:0 atIndex:1];
++        [encoder setBuffer:group_map_buffer offset:0 atIndex:2];
++        [encoder setBuffer:group_map_buffer offset:tpe_bytes atIndex:3];
++        [encoder setBuffer:group_map_buffer offset:work_offset atIndex:4];
++        [encoder setThreadgroupMemoryLength:128u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
++             threadsPerThreadgroup:MTLSizeMake(8,1,1)];
++
++        [encoder setComputePipelineState:context.attentionOutputBatchLowPipeline];
++        [encoder setBytes:&layer5_low_args length:sizeof(layer5_low_args) atIndex:0];
++        [encoder setBuffer:model_buffers[510] offset:inner[510] atIndex:1];
++        [encoder setBuffer:heads_buffer offset:0 atIndex:2];
++        [encoder setBuffer:group_map_buffer offset:0 atIndex:3];
++        [encoder setBuffer:group_map_buffer offset:tpe_bytes atIndex:4];
++        [encoder setBuffer:attention_low_buffer offset:0 atIndex:5];
++        [encoder setBuffer:group_map_buffer offset:work_offset atIndex:6];
++        [encoder setThreadgroupMemoryLength:8192u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(work_cap,output_rank/64u,1)
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
++
++        [encoder setComputePipelineState:context.q8PrefillPipeline];
++        [encoder setBytes:&layer5_output_args
++                   length:sizeof(layer5_output_args) atIndex:0];
++        [encoder setBuffer:model_buffers[511] offset:inner[511] atIndex:1];
++        [encoder setBuffer:attention_low_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer19_attention_output_buffer offset:0 atIndex:3];
++        [encoder setThreadgroupMemoryLength:6144u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,n_embd/64u,1)
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
++
++        [encoder setComputePipelineState:context.hcExpand4Pipeline];
++        [encoder setBytes:&attention_hc_args
++                   length:sizeof(attention_hc_args) atIndex:0];
++        [encoder setBuffer:layer19_attention_output_buffer offset:0 atIndex:1];
++        [encoder setBuffer:layer18_after_ffn_hc_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer19_split_buffer
++                     offset:4u*sizeof(float) atIndex:3];
++        [encoder setBuffer:layer19_split_buffer
++                     offset:8u*sizeof(float) atIndex:4];
++        [encoder setBuffer:layer19_attention_output_buffer offset:0 atIndex:5];
++        [encoder setBuffer:layer19_after_attention_hc_buffer offset:0 atIndex:6];
++        [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++        [encoder endEncoding];
++
++        id<MTLBlitCommandEncoder> layer19_attention_tail_blit =
++            [command blitCommandEncoder];
++        if (!layer19_attention_tail_blit) return fail_with_message(
++            error, error_bytes,
++            @"failed to create retained prefill layer-7 attention tail encoder");
++        [layer19_attention_tail_blit copyFromBuffer:heads_buffer sourceOffset:0
++                                         toBuffer:layer19_kqv_back_row0_buffer
++                                destinationOffset:0 size:q_dim*sizeof(float)];
++        [layer19_attention_tail_blit copyFromBuffer:attention_low_buffer
++                                      sourceOffset:0
++                                         toBuffer:layer19_attn_low_row0_buffer
++                                destinationOffset:0
++                                           size:8u*output_rank*sizeof(float)];
++        [layer19_attention_tail_blit endEncoding];
++        encoder = [command computeCommandEncoder];
++        if (!encoder) return fail_with_message(
++            error, error_bytes,
++            @"failed to resume prefill layer-7 FFN encoder");
++
++        [encoder setComputePipelineState:context.rmsNormF32Pipeline];
++        [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
++        [encoder setBuffer:layer19_after_attention_hc_buffer offset:0 atIndex:1];
++        [encoder setBuffer:layer19_after_attention_hc_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer19_after_attention_hc_buffer offset:0 atIndex:3];
++        [encoder setBuffer:layer19_ffn_flat_hc_buffer offset:0 atIndex:4];
++        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
++             threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
++
++        [encoder setComputePipelineState:context.f16PrefillPipeline];
++        [encoder setBytes:&ffn_hc_mm_args length:sizeof(ffn_hc_mm_args) atIndex:0];
++        [encoder setBuffer:model_buffers[512] offset:inner[512] atIndex:1];
++        [encoder setBuffer:layer19_ffn_flat_hc_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer19_ffn_mix_buffer offset:0 atIndex:3];
++        [encoder setThreadgroupMemoryLength:8192u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,1,1)
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
++
++        [encoder setComputePipelineState:context.hcIngressPipeline];
++        [encoder setBytes:&ffn_hc_ingress_args length:sizeof(ffn_hc_ingress_args) atIndex:0];
++        [encoder setBuffer:layer19_ffn_mix_buffer offset:0 atIndex:1];
++        [encoder setBuffer:model_buffers[513] offset:inner[513] atIndex:2];
++        [encoder setBuffer:model_buffers[514] offset:inner[514] atIndex:3];
++        [encoder setBuffer:layer19_after_attention_hc_buffer offset:0 atIndex:4];
++        [encoder setBuffer:layer19_ffn_split_buffer offset:0 atIndex:5];
++        [encoder setBuffer:layer19_ffn_cur_buffer offset:0 atIndex:6];
++        [encoder setBuffer:model_buffers[515] offset:inner[515] atIndex:7];
++        [encoder setBuffer:layer19_ffn_norm_buffer offset:0 atIndex:8];
++        [encoder setThreadgroupMemoryLength:(n_embd+4u+32u)*sizeof(float) atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
++             threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
++
++        [encoder setComputePipelineState:context.f16PrefillPipeline];
++        [encoder setBytes:&router_args length:sizeof(router_args) atIndex:0];
++        [encoder setBuffer:model_buffers[516] offset:inner[516] atIndex:1];
++        [encoder setBuffer:layer19_ffn_norm_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer19_router_logits_buffer offset:0 atIndex:3];
++        [encoder setThreadgroupMemoryLength:8192u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,4,1)
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
++
++        [encoder setComputePipelineState:context.routerSoftplusBatchPipeline];
++        [encoder setBuffer:layer19_router_logits_buffer offset:0 atIndex:0];
++        [encoder setBuffer:layer19_router_probs_buffer offset:0 atIndex:1];
++        [encoder dispatchThreads:MTLSizeMake(rows*256u,1,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++        [encoder setComputePipelineState:context.routerSqrtBatchPipeline];
++        [encoder setBuffer:layer19_router_probs_buffer offset:0 atIndex:0];
++        [encoder setBuffer:layer19_router_probs_buffer offset:0 atIndex:1];
++        [encoder dispatchThreads:MTLSizeMake(rows*256u,1,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++        [encoder setComputePipelineState:context.routerTopkRowsBatchPipeline];
++        [encoder setBuffer:layer19_router_probs_buffer offset:0 atIndex:0];
++        [encoder setBuffer:model_buffers[517] offset:inner[517] atIndex:1];
++        [encoder setBuffer:layer19_router_selected_buffer offset:0 atIndex:2];
++        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++        [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
++        [encoder setBuffer:layer19_router_probs_buffer offset:0 atIndex:0];
++        [encoder setBuffer:layer19_router_selected_buffer offset:0 atIndex:1];
++        [encoder setBuffer:layer19_router_weights_buffer offset:0 atIndex:2];
++        [encoder dispatchThreads:MTLSizeMake(6,rows,1)
++             threadsPerThreadgroup:MTLSizeMake(6,1,1)];
++
++        [encoder setComputePipelineState:context.compressorSumRowsPipeline];
++        [encoder setBytes:&router_sum_args length:sizeof(router_sum_args) atIndex:0];
++        [encoder setBuffer:layer19_router_weights_buffer offset:0 atIndex:1];
++        [encoder setBuffer:layer19_router_weight_sums_buffer offset:0 atIndex:2];
++        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
++             threadsPerThreadgroup:MTLSizeMake(6,1,1)];
++        [encoder setComputePipelineState:context.routerClampSumsBatchPipeline];
++        [encoder setBuffer:layer19_router_weight_sums_buffer offset:0 atIndex:0];
++        [encoder setBuffer:layer19_router_weight_sums_buffer offset:0 atIndex:1];
++        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++        [encoder setComputePipelineState:context.routerDivideBatchPipeline];
++        [encoder setBuffer:layer19_router_weights_buffer offset:0 atIndex:0];
++        [encoder setBuffer:layer19_router_weight_sums_buffer offset:0 atIndex:1];
++        [encoder setBuffer:layer19_router_weights_buffer offset:0 atIndex:2];
++        [encoder dispatchThreads:MTLSizeMake(6,rows,1)
++             threadsPerThreadgroup:MTLSizeMake(6,1,1)];
++        [encoder setComputePipelineState:context.routerScaleBatchPipeline];
++        [encoder setBuffer:layer19_router_weights_buffer offset:0 atIndex:0];
++        [encoder setBuffer:layer19_router_weights_buffer offset:0 atIndex:1];
++        [encoder dispatchThreads:MTLSizeMake(rows*6u,1,1)
++             threadsPerThreadgroup:MTLSizeMake(192,1,1)];
++
++        [encoder setComputePipelineState:context.routedBatchMapPipeline];
++        [encoder setBytes:&routed_map_args length:sizeof(routed_map_args) atIndex:0];
++        [encoder setBuffer:layer19_router_selected_buffer offset:0 atIndex:1];
++        [encoder setBuffer:routed_map_buffer offset:0 atIndex:2];
++        [encoder setBuffer:routed_map_buffer offset:routed_map_tpe_bytes atIndex:3];
++        [encoder setBuffer:routed_map_buffer offset:routed_map_work_offset atIndex:4];
++        [encoder setThreadgroupMemoryLength:256u*6u*sizeof(uint16_t) atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++
++        [encoder setComputePipelineState:context.routedBatchPairSwigluPipeline];
++        [encoder setBytes:&routed_gate_args length:sizeof(routed_gate_args) atIndex:0];
++        [encoder setBytes:&routed_activation_args length:sizeof(routed_activation_args) atIndex:1];
++        [encoder setBuffer:model_buffers[518] offset:inner[518] atIndex:2];
++        [encoder setBuffer:model_buffers[519] offset:inner[519] atIndex:3];
++        [encoder setBuffer:layer19_ffn_norm_buffer offset:0 atIndex:4];
++        [encoder setBuffer:routed_map_buffer offset:0 atIndex:5];
++        [encoder setBuffer:routed_map_buffer offset:routed_map_tpe_bytes atIndex:6];
++        [encoder setBuffer:routed_mid_buffer offset:0 atIndex:7];
++        [encoder setBuffer:layer19_router_weights_buffer offset:0 atIndex:8];
++        [encoder setBuffer:routed_map_buffer offset:routed_map_work_offset atIndex:9];
++        [encoder setThreadgroupMemoryLength:16384u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(routed_map_work_cap,32,1)
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
++
++        [encoder setComputePipelineState:context.routedBatchDownPipeline];
++        [encoder setBytes:&routed_down_args length:sizeof(routed_down_args) atIndex:0];
++        [encoder setBuffer:model_buffers[520] offset:inner[520] atIndex:1];
++        [encoder setBuffer:routed_mid_buffer offset:0 atIndex:2];
++        [encoder setBuffer:routed_map_buffer offset:0 atIndex:3];
++        [encoder setBuffer:routed_map_buffer offset:routed_map_tpe_bytes atIndex:4];
++        [encoder setBuffer:routed_experts_buffer offset:0 atIndex:5];
++        [encoder setBuffer:routed_map_buffer offset:routed_map_work_offset atIndex:6];
++        [encoder setThreadgroupMemoryLength:8192u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(routed_map_work_cap,64,1)
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
++        [encoder setComputePipelineState:context.routedBatchSumPipeline];
++        [encoder setBytes:&routed_sum_args length:sizeof(routed_sum_args) atIndex:0];
++        [encoder setBuffer:routed_experts_buffer offset:0 atIndex:1];
++        [encoder setBuffer:layer19_routed_out_buffer offset:0 atIndex:2];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++
++#define RUST_STAR_ENCODE_L13_SHARED(args, index, input, output, width) do { \
++        [encoder setComputePipelineState:context.q8PrefillPipeline]; \
++        [encoder setBytes:&(args) length:sizeof(args) atIndex:0]; \
++        [encoder setBuffer:model_buffers[(index)] offset:inner[(index)] atIndex:1]; \
++        [encoder setBuffer:(input) offset:0 atIndex:2]; \
++        [encoder setBuffer:(output) offset:0 atIndex:3]; \
++        [encoder setThreadgroupMemoryLength:6144u atIndex:0]; \
++        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,(width)/64u,1) \
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)]; \
++    } while (0)
++        RUST_STAR_ENCODE_L13_SHARED(shared_gate_args, 521, layer19_ffn_norm_buffer,
++            shared_gate_buffer, 2048);
++        RUST_STAR_ENCODE_L13_SHARED(shared_up_args, 522, layer19_ffn_norm_buffer,
++            shared_up_buffer, 2048);
++        [encoder setComputePipelineState:context.sharedSwigluBatchPipeline];
++        [encoder setBytes:&shared_swiglu_args length:sizeof(shared_swiglu_args) atIndex:0];
++        [encoder setBuffer:shared_gate_buffer offset:0 atIndex:1];
++        [encoder setBuffer:shared_up_buffer offset:0 atIndex:2];
++        [encoder setBuffer:shared_mid_buffer offset:0 atIndex:3];
++        [encoder dispatchThreadgroups:MTLSizeMake((rows*2048u+255u)/256u,1,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++        RUST_STAR_ENCODE_L13_SHARED(shared_down_args, 523, shared_mid_buffer,
++            layer19_shared_out_buffer, n_embd);
++#undef RUST_STAR_ENCODE_L13_SHARED
++
++        [encoder setComputePipelineState:context.hcExpand4Pipeline];
++        [encoder setBytes:&ffn_hc_post_args length:sizeof(ffn_hc_post_args) atIndex:0];
++        [encoder setBuffer:layer19_routed_out_buffer offset:0 atIndex:1];
++        [encoder setBuffer:layer19_after_attention_hc_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer19_ffn_split_buffer offset:4u*sizeof(float) atIndex:3];
++        [encoder setBuffer:layer19_ffn_split_buffer offset:8u*sizeof(float) atIndex:4];
++        [encoder setBuffer:layer19_shared_out_buffer offset:0 atIndex:5];
++        [encoder setBuffer:layer19_after_ffn_hc_buffer offset:0 atIndex:6];
+         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
+              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+         [encoder endEncoding];
+@@ -17556,15 +18256,94 @@ int rust_star_metal_run_prefill_layer2_attention(
+         memcpy(layer18_shared_out_final_tile,
+                (const uint8_t *)layer18_shared_out_buffer.contents+final_tile_offset,
+                32u*n_embd*sizeof(float));
++        memcpy(layer19_hc_attn_pre_final_tile,
++               (const uint8_t *)layer19_cur_buffer.contents+final_tile_offset,
++               32u*n_embd*sizeof(float));
++        memcpy(layer19_attn_norm_final_tile,
++               (const uint8_t *)layer19_norm_buffer.contents+final_tile_offset,
++               32u*n_embd*sizeof(float));
++        memcpy(layer19_q_lora_final_tile,
++               (const uint8_t *)layer19_q_lora_buffer.contents+
++                   layer4_q_rank_final_tile_offset,
++               32u*1024u*sizeof(float));
++        memcpy(layer19_q_lora_norm_final_tile,
++               (const uint8_t *)layer19_q_norm_buffer.contents+
++                   layer4_q_rank_final_tile_offset,
++               32u*1024u*sizeof(float));
++        memcpy(layer19_kv_raw_final_tile,
++               (const uint8_t *)layer19_kv_raw_buffer.contents+
++                   layer4_kv_final_tile_offset,
++               32u*512u*sizeof(float));
++        memcpy(layer19_kv_norm_final_tile,
++               (const uint8_t *)layer19_kv_norm_snapshot_buffer.contents+
++                   layer4_kv_final_tile_offset,
++               32u*512u*sizeof(float));
++        memcpy(layer19_q_raw_final_tile,
++               (const uint8_t *)layer19_q_raw_buffer.contents+
++                   layer3_q_final_tile_offset,
++               32u*q_dim*sizeof(float));
++        memcpy(layer19_q_cur_final_tile,
++               (const uint8_t *)layer19_q_cur_buffer.contents+
++                   layer3_q_final_tile_offset,
++               32u*q_dim*sizeof(float));
++        memcpy(layer19_kv_rope_final_tile,
++               (const uint8_t *)layer19_kv_rope_buffer.contents+
++                   layer4_kv_final_tile_offset,
++               32u*512u*sizeof(float));
++        memcpy(layer19_kv_cur_final_tile,
++               (const uint8_t *)layer19_kv_norm_buffer.contents+
++                   layer4_kv_final_tile_offset,
++               32u*512u*sizeof(float));
++        memcpy(layer19_attn_compressed,
++               layer19_attn_compressed_buffer.contents, layer3_compressed_bytes);
++        memcpy(layer19_attn_state_kv,
++               layer19_attn_state_kv_buffer.contents,
++               layer3_compressor_state_bytes);
++        memcpy(layer19_attn_state_score,
++               layer19_attn_state_score_buffer.contents,
++               layer3_compressor_state_bytes);
++        memcpy(layer19_kqv_out_row0,
++               layer19_kqv_out_row0_buffer.contents, q_dim*sizeof(float));
++        memcpy(layer19_kqv_back_row0,
++               layer19_kqv_back_row0_buffer.contents, q_dim*sizeof(float));
++        memcpy(layer19_attn_low_row0,
++               layer19_attn_low_row0_buffer.contents,
++               8u*output_rank*sizeof(float));
++        memcpy(layer19_attention_output,
++               layer19_attention_output_buffer.contents, output_bytes);
++        memcpy(layer19_after_attention_hc,
++               layer19_after_attention_hc_buffer.contents, hc_bytes);
++        memcpy(layer19_after_ffn_hc,
++               layer19_after_ffn_hc_buffer.contents, hc_bytes);
++        memcpy(layer19_ffn_cur_final_tile,
++               (const uint8_t *)layer19_ffn_cur_buffer.contents+final_tile_offset,
++               32u*n_embd*sizeof(float));
++        memcpy(layer19_ffn_norm_final_tile,
++               (const uint8_t *)layer19_ffn_norm_buffer.contents+final_tile_offset,
++               32u*n_embd*sizeof(float));
++        memcpy(layer19_router_selected_final_tile,
++               (const uint8_t *)layer19_router_selected_buffer.contents+
++                   final_selected_offset,
++               32u*6u*sizeof(int32_t));
++        memcpy(layer19_router_weights_final_tile,
++               (const uint8_t *)layer19_router_weights_buffer.contents+
++                   final_selected_offset,
++               32u*6u*sizeof(float));
++        memcpy(layer19_routed_out_final_tile,
++               (const uint8_t *)layer19_routed_out_buffer.contents+final_tile_offset,
++               32u*n_embd*sizeof(float));
++        memcpy(layer19_shared_out_final_tile,
++               (const uint8_t *)layer19_shared_out_buffer.contents+final_tile_offset,
++               32u*n_embd*sizeof(float));
+         uint32_t pointer_matches = 0;
+-        for (uint32_t index = 0; index < 496u; index++) {
++        for (uint32_t index = 0; index < 524u; index++) {
+             pointer_matches += matches[index] ? 1u : 0u;
+         }
+         result->rows = rows;
+         result->raw_kv_rows = raw_rows;
+         result->compressed_kv_rows = compressed_rows;
+-        result->dispatches = 968u;
+-        result->wrapped_model_ranges = 496u;
++        result->dispatches = 1015u;
++        result->wrapped_model_ranges = 524u;
+         result->pointer_matches = pointer_matches;
+         result->layer3_compressed_kv_rows = layer3_compressed_rows;
+         result->wall_ms = wall_end-wall_start;
+@@ -17723,6 +18502,16 @@ int rust_star_metal_run_prefill_layer2_attention(
+         context.prefillLayer18IndexerStateScore = layer18_indexer_state_score_buffer;
+         context.prefillLayer18AfterAttentionHc = layer18_after_attention_hc_buffer;
+         context.prefillLayer18AfterFfnHc = layer18_after_ffn_hc_buffer;
++        context.prefillLayer19FullQ = layer19_q_cur_buffer;
++        context.prefillLayer19FullKv = layer19_kv_norm_buffer;
++        context.prefillLayer19InputHc = layer18_after_ffn_hc_buffer;
++        context.prefillLayer19AttnSplit = layer19_split_buffer;
++        context.prefillLayer19AttnCompressed = layer19_attn_compressed_buffer;
++        context.prefillLayer19AttnStateKv = layer19_attn_state_kv_buffer;
++        context.prefillLayer19AttnStateScore = layer19_attn_state_score_buffer;
++        context.prefillLayer19AfterAttentionHc =
++            layer19_after_attention_hc_buffer;
++        context.prefillLayer19AfterFfnHc = layer19_after_ffn_hc_buffer;
+         return 1;
+     }
+ }

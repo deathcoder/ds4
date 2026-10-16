@@ -1,0 +1,2210 @@
+diff --git a/rust-star/runtime/src/main.rs b/rust-star/runtime/src/main.rs
+index cc4f635..4be3440 100644
+--- a/rust-star/runtime/src/main.rs
++++ b/rust-star/runtime/src/main.rs
+@@ -2476,7 +2476,7 @@ fn run_prefill_layers012_attention_loop_probe_command(arguments: Vec<OsString>)
+     let model = MappedModel::open(&model_path)?;
+     validate_resident_q2(model.gguf())?;
+     let report = run_prefill_layers012_attention_loop_probe(&model)?;
+-    println!("native complete layers 0-19 at 2K: 2048 raw rows + 512 dense layer-2/layer-4/layer-6/layer-8/layer-10/layer-12/layer-14/layer-16/layer-20 compressed rows + 16 layer-3/layer-5/layer-7/layer-9/layer-11/layer-13/layer-15/layer-17/layer-21 compressed rows");
++    println!("native complete layers 0-20 at 2K: 2048 raw rows + 512 dense layer-2/layer-4/layer-6/layer-8/layer-10/layer-12/layer-14/layer-16/layer-20/layer-22 compressed rows + 16 layer-3/layer-5/layer-7/layer-9/layer-11/layer-13/layer-15/layer-17/layer-21 compressed rows");
+     println!(
+         "terminal attention/FFN schedule: {} dispatches, {}/{} no-copy model ranges, wall={:.3} ms gpu={:.3} ms",
+         report.dispatches,
+@@ -2485,7 +2485,7 @@ fn run_prefill_layers012_attention_loop_probe_command(arguments: Vec<OsString>)
+         report.wall_ms,
+         report.gpu_ms,
+     );
+-    println!("scope: complete native layers 0-19, including exact paired ratio-4 and ratio-128 compressors, dense mixed attention, biased top-6 routed/shared FFNs, and additive final HC updates at the 2K prompt boundary; no layer-22 prefill, sparse post-prompt top-k, complete-model-prefill, output-logit, or throughput claim");
++    println!("scope: complete native layers 0-20, including exact paired ratio-4 and ratio-128 compressors, dense mixed attention, biased top-6 routed/shared FFNs, and additive final HC updates at the 2K prompt boundary; no layer-21 prefill, sparse post-prompt top-k, complete-model-prefill, output-logit, or throughput claim");
+     if let Some(path) = json_path {
+         write_prefill_layers012_attention_loop_probe_file(&path, &report)?;
+         println!("json: {}", path.display());
+@@ -4088,7 +4088,7 @@ fn prefill_layers012_compressor_loop_probe_usage() -> &'static str {
+ }
+ 
+ fn prefill_layers012_attention_loop_probe_usage() -> &'static str {
+-    "usage: rust-star prefill-layers012-attention-loop-probe MODEL.gguf [--json PATH]\n\nRuns all 64 native 32-row schedules over positions 0--2047 in one persistent Metal context and completes layers 2 through 19. Even layers 2/4/6/8/10/12/14/16/18 include paired ratio-4 attention/indexer compressors; odd layers 3/5/7/9/11/13/15/17/19 use ratio-128 attention compressors. Each layer continues through dense mixed attention, biased top-6 routed/shared experts, and its additive final HC update. Every retained boundary must match repeated DwarfStar captures bit-for-bit. The 2,064 logical odd-layer keys use a 2,112-row masked physical extent required by the 64-row FlashAttention block contract. Exactly 512 ratio-4 rows remain on the dense path at this prompt boundary. This does not claim layer-22 prefill, sparse post-prompt ratio-4 attention, complete-model prefill, output logits, or throughput."
++    "usage: rust-star prefill-layers012-attention-loop-probe MODEL.gguf [--json PATH]\n\nRuns all 64 native 32-row schedules over positions 0--2047 in one persistent Metal context and completes layers 2 through 20. Even layers 2/4/6/8/10/12/14/16/18/20 include paired ratio-4 attention/indexer compressors; odd layers 3/5/7/9/11/13/15/17/19 use ratio-128 attention compressors. Each layer continues through dense mixed attention, biased top-6 routed/shared experts, and its additive final HC update. Every retained boundary must match repeated DwarfStar captures bit-for-bit. The 2,064 logical odd-layer keys use a 2,112-row masked physical extent required by the 64-row FlashAttention block contract. Exactly 512 ratio-4 rows remain on the dense path at this prompt boundary. This does not claim layer-21 prefill, sparse post-prompt ratio-4 attention, complete-model prefill, output logits, or throughput."
+ }
+ 
+ fn ingress_probe_usage() -> &'static str {
+diff --git a/rust-star/runtime/src/metal.rs b/rust-star/runtime/src/metal.rs
+index 455216e..631cb0f 100644
+--- a/rust-star/runtime/src/metal.rs
++++ b/rust-star/runtime/src/metal.rs
+@@ -219,6 +219,13 @@ pub const PREFILL_LAYER21_ATTENTION_FIXTURE_ID: &str =
+     "dwarfstar-oracle-v1-prefill-layer21-attention-2048";
+ pub const PREFILL_LAYER21_COMPLETE_FIXTURE_ID: &str =
+     "dwarfstar-oracle-v1-prefill-layer21-complete-2048";
++pub const PREFILL_LAYER22_QKV_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-layer22-qkv-2048";
++pub const PREFILL_LAYER22_COMPRESSOR_FIXTURE_ID: &str =
++    "dwarfstar-oracle-v1-prefill-layer22-compressor-2048";
++pub const PREFILL_LAYER22_ATTENTION_FIXTURE_ID: &str =
++    "dwarfstar-oracle-v1-prefill-layer22-attention-2048";
++pub const PREFILL_LAYER22_COMPLETE_FIXTURE_ID: &str =
++    "dwarfstar-oracle-v1-prefill-layer22-complete-2048";
+ pub const PREFILL_LAYERS01_PREVIOUS_TILE_FIXTURE_ID: &str =
+     "dwarfstar-oracle-v1-prefill-layers01-previous-tile-2048";
+ pub const PREFILL_HC_INGRESS_FIXTURE_ID: &str = "dwarfstar-oracle-v1-prefill-hc-ingress-2048";
+@@ -1187,6 +1194,40 @@ const PREFILL_LAYER21_KQV_BACK_ROW0_BYTES: &[u8] = include_bytes!(
+ const PREFILL_LAYER21_ATTN_LOW_ROW0_BYTES: &[u8] = include_bytes!(
+     "../../fixtures/prefill-layer21-attention-2048-v1/layer21-attn-low-row0.f32le.bin"
+ );
++const PREFILL_LAYER22_ATTN_COMPRESSED_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer22-compressor-2048-v1/attention-compressed-kv.f32le.bin"
++);
++const PREFILL_LAYER22_ATTN_STATE_KV_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer22-compressor-2048-v1/attention-state-kv.f32le.bin"
++);
++const PREFILL_LAYER22_ATTN_STATE_SCORE_BITS: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer22-compressor-2048-v1/attention-state-score.i32le.bin"
++);
++const PREFILL_LAYER22_INDEXER_COMPRESSED_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer22-compressor-2048-v1/indexer-compressed-kv.f32le.bin"
++);
++const PREFILL_LAYER22_INDEXER_STATE_KV_BYTES: &[u8] =
++    include_bytes!("../../fixtures/prefill-layer22-compressor-2048-v1/indexer-state-kv.f32le.bin");
++const PREFILL_LAYER22_INDEXER_STATE_SCORE_BITS: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer22-compressor-2048-v1/indexer-state-score.i32le.bin"
++);
++const PREFILL_LAYER22_ATTENTION_OUTPUT_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer22-attention-2048-v1/layer22-attention-output.f32le.bin"
++);
++const PREFILL_LAYER22_ATTENTION_OUTPUT_CHECKSUM: u64 = 0xd2eb_1871_65b0_aab7;
++const PREFILL_LAYER22_HC_ATTN_POST_FINAL_TILE_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer22-attention-2048-v1/layer22-hc-attn-post-final-tile.f32le.bin"
++);
++const PREFILL_LAYER22_HC_ATTN_POST_FULL_CHECKSUM: u64 = 0x105e_17c0_7840_89c3;
++const PREFILL_LAYER22_KQV_OUT_ROW0_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer22-attention-2048-v1/layer22-kqv-out-row0.f32le.bin"
++);
++const PREFILL_LAYER22_KQV_BACK_ROW0_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer22-attention-2048-v1/layer22-kqv-back-row0.f32le.bin"
++);
++const PREFILL_LAYER22_ATTN_LOW_ROW0_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer22-attention-2048-v1/layer22-attn-low-row0.f32le.bin"
++);
+ const PREFILL_LAYER4_ATTENTION_OUTPUT_BYTES: &[u8] = include_bytes!(
+     "../../fixtures/prefill-layer4-attention-2048-v1/layer4-attention-output.f32le.bin"
+ );
+@@ -1665,6 +1706,28 @@ const PREFILL_LAYER21_HC_FFN_POST_FINAL_TILE_BYTES: &[u8] = include_bytes!(
+     "../../fixtures/prefill-layer21-complete-2048-v1/layer21-hc-ffn-post-final-tile.f32le.bin"
+ );
+ const PREFILL_LAYER21_HC_FFN_POST_FULL_CHECKSUM: u64 = 0xd085_3062_1e70_27c6;
++const PREFILL_LAYER22_FFN_CUR_FINAL_TILE_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer22-complete-2048-v1/layer22-hc-ffn-pre-final-tile.f32le.bin"
++);
++const PREFILL_LAYER22_FFN_NORM_FINAL_TILE_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer22-complete-2048-v1/layer22-ffn-norm-final-tile.f32le.bin"
++);
++const PREFILL_LAYER22_ROUTER_SELECTED_FINAL_TILE_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer22-complete-2048-v1/layer22-ffn-moe-topk-final-tile.i32le.bin"
++);
++const PREFILL_LAYER22_ROUTER_WEIGHTS_FINAL_TILE_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer22-complete-2048-v1/layer22-ffn-moe-weights-scaled-final-tile.f32le.bin"
++);
++const PREFILL_LAYER22_ROUTED_OUT_FINAL_TILE_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer22-complete-2048-v1/layer22-ffn-moe-out-final-tile.f32le.bin"
++);
++const PREFILL_LAYER22_SHARED_OUT_FINAL_TILE_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer22-complete-2048-v1/layer22-ffn-shexp-final-tile.f32le.bin"
++);
++const PREFILL_LAYER22_HC_FFN_POST_FINAL_TILE_BYTES: &[u8] = include_bytes!(
++    "../../fixtures/prefill-layer22-complete-2048-v1/layer22-hc-ffn-post-final-tile.f32le.bin"
++);
++const PREFILL_LAYER22_HC_FFN_POST_FULL_CHECKSUM: u64 = 0x5d7b_8239_56c6_987d;
+ const PREFILL_LAYER3_FFN_CUR_FINAL_TILE_BYTES: &[u8] = include_bytes!(
+     "../../fixtures/prefill-layer3-complete-2048-v1/layer3-hc-ffn-pre-final-tile.f32le.bin"
+ );
+@@ -2085,6 +2148,36 @@ const PREFILL_LAYER21_QKV_FINAL_TILE_BYTES: [&[u8]; 10] = [
+     ),
+     include_bytes!("../../fixtures/prefill-layer21-qkv-2048-v1/layer21-kvcur-final-tile.f32le.bin"),
+ ];
++const PREFILL_LAYER22_QKV_FINAL_TILE_BYTES: [&[u8]; 10] = [
++    include_bytes!(
++        "../../fixtures/prefill-layer22-qkv-2048-v1/layer22-hc-attn-pre-final-tile.f32le.bin"
++    ),
++    include_bytes!(
++        "../../fixtures/prefill-layer22-qkv-2048-v1/layer22-attn-norm-final-tile.f32le.bin"
++    ),
++    include_bytes!(
++        "../../fixtures/prefill-layer22-qkv-2048-v1/layer22-q-lora-final-tile.f32le.bin"
++    ),
++    include_bytes!(
++        "../../fixtures/prefill-layer22-qkv-2048-v1/layer22-q-lora-norm-final-tile.f32le.bin"
++    ),
++    include_bytes!(
++        "../../fixtures/prefill-layer22-qkv-2048-v1/layer22-kv-raw-final-tile.f32le.bin"
++    ),
++    include_bytes!(
++        "../../fixtures/prefill-layer22-qkv-2048-v1/layer22-kv-norm-final-tile.f32le.bin"
++    ),
++    include_bytes!("../../fixtures/prefill-layer22-qkv-2048-v1/layer22-q-raw-final-tile.f32le.bin"),
++    include_bytes!(
++        "../../fixtures/prefill-layer22-qkv-2048-v1/layer22-q-current-final-tile.f32le.bin"
++    ),
++    include_bytes!(
++        "../../fixtures/prefill-layer22-qkv-2048-v1/layer22-kv-rope-final-tile.f32le.bin"
++    ),
++    include_bytes!(
++        "../../fixtures/prefill-layer22-qkv-2048-v1/layer22-kv-current-final-tile.f32le.bin"
++    ),
++];
+ const PREFILL_LAYER3_KQV_OUT_ROW0_BYTES: &[u8] =
+     include_bytes!("../../fixtures/prefill-layer3-attention-2048-v1/layer3-kqv-out-row0.f32le.bin");
+ const PREFILL_LAYER3_KQV_BACK_ROW0_BYTES: &[u8] = include_bytes!(
+@@ -2747,6 +2840,10 @@ pub struct PrefillLayers012AttentionLoopProbeReport {
+     pub layer21_compressor_fixture_id: &'static str,
+     pub layer21_attention_fixture_id: &'static str,
+     pub layer21_complete_fixture_id: &'static str,
++    pub layer22_qkv_fixture_id: &'static str,
++    pub layer22_compressor_fixture_id: &'static str,
++    pub layer22_attention_fixture_id: &'static str,
++    pub layer22_complete_fixture_id: &'static str,
+     pub rows: u32,
+     pub raw_kv_rows: u32,
+     pub compressed_kv_rows: u32,
+@@ -2855,6 +2952,11 @@ pub struct PrefillLayers012AttentionLoopProbeReport {
+     pub layer21_attention_output_checksum: u64,
+     pub layer21_after_attention_hc_checksum: u64,
+     pub layer21_after_ffn_hc_checksum: u64,
++    pub layer22_qkv_checksums: [u64; 10],
++    pub layer22_compressor_checksums: [u64; 6],
++    pub layer22_attention_output_checksum: u64,
++    pub layer22_after_attention_hc_checksum: u64,
++    pub layer22_after_ffn_hc_checksum: u64,
+ }
+ 
+ #[derive(Clone, Debug)]
+@@ -5255,6 +5357,10 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
+     let layer21_compressor = prefill_layer21_compressor_fixture()?;
+     let _layer21_attention = prefill_layer21_attention_fixture()?;
+     let _layer21_complete = prefill_layer21_complete_final_tile_fixture()?;
++    let layer22_qkv = prefill_layer22_qkv_final_tile_fixture()?;
++    let layer22_compressor = prefill_layer22_compressor_fixture()?;
++    let _layer22_attention = prefill_layer22_attention_fixture()?;
++    let _layer22_complete = prefill_layer22_complete_final_tile_fixture()?;
+     if report.compressor.tiles.len() != 64
+         || report.attention_fixture_id != PREFILL_LAYER2_ATTENTION_FIXTURE_ID
+         || report.attention_hc_fixture_id != PREFILL_LAYER2_COMPLETE_FIXTURE_ID
+@@ -5327,13 +5433,17 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
+         || report.layer21_compressor_fixture_id != PREFILL_LAYER21_COMPRESSOR_FIXTURE_ID
+         || report.layer21_attention_fixture_id != PREFILL_LAYER21_ATTENTION_FIXTURE_ID
+         || report.layer21_complete_fixture_id != PREFILL_LAYER21_COMPLETE_FIXTURE_ID
++        || report.layer22_qkv_fixture_id != PREFILL_LAYER22_QKV_FIXTURE_ID
++        || report.layer22_compressor_fixture_id != PREFILL_LAYER22_COMPRESSOR_FIXTURE_ID
++        || report.layer22_attention_fixture_id != PREFILL_LAYER22_ATTENTION_FIXTURE_ID
++        || report.layer22_complete_fixture_id != PREFILL_LAYER22_COMPLETE_FIXTURE_ID
+         || report.rows != 2048
+         || report.raw_kv_rows != 2048
+         || report.compressed_kv_rows != 512
+         || report.layer3_compressed_kv_rows != 16
+-        || report.dispatches != 1132
+-        || report.wrapped_model_ranges != 584
+-        || report.pointer_matches != 584
++        || report.dispatches != 1202
++        || report.wrapped_model_ranges != 616
++        || report.pointer_matches != 616
+         || report.output_checksum != checksum_f32(&expected)
+         || report.after_attention_hc_checksum != PREFILL_LAYER2_HC_ATTN_POST_FULL_CHECKSUM
+         || report.after_ffn_hc_checksum != PREFILL_LAYER2_HC_FFN_POST_FULL_CHECKSUM
+@@ -5497,6 +5607,14 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
+         || report.layer21_attention_output_checksum != PREFILL_LAYER21_ATTENTION_OUTPUT_CHECKSUM
+         || report.layer21_after_attention_hc_checksum != PREFILL_LAYER21_HC_ATTN_POST_FULL_CHECKSUM
+         || report.layer21_after_ffn_hc_checksum != PREFILL_LAYER21_HC_FFN_POST_FULL_CHECKSUM
++        || report.layer22_qkv_checksums != layer22_qkv.each_ref().map(|tensor| checksum_f32(tensor))
++        || report.layer22_compressor_checksums
++            != layer22_compressor
++                .each_ref()
++                .map(|tensor| checksum_f32(tensor))
++        || report.layer22_attention_output_checksum != PREFILL_LAYER22_ATTENTION_OUTPUT_CHECKSUM
++        || report.layer22_after_attention_hc_checksum != PREFILL_LAYER22_HC_ATTN_POST_FULL_CHECKSUM
++        || report.layer22_after_ffn_hc_checksum != PREFILL_LAYER22_HC_FFN_POST_FULL_CHECKSUM
+         || !report.wall_ms.is_finite()
+         || report.wall_ms <= 0.0
+         || !report.gpu_ms.is_finite()
+@@ -5592,6 +5710,10 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
+         report.layer21_compressor_fixture_id,
+         report.layer21_attention_fixture_id,
+         report.layer21_complete_fixture_id,
++        report.layer22_qkv_fixture_id,
++        report.layer22_compressor_fixture_id,
++        report.layer22_attention_fixture_id,
++        report.layer22_complete_fixture_id,
+     ]
+     .iter()
+     .enumerate()
+@@ -5934,6 +6056,31 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
+             report.layer21_after_ffn_hc_checksum,
+         ),
+     );
++    let checksum_tail = checksum_tail.replace(
++        "}}},\n  \"persistent_metal_context\"",
++        &format!(
++            ", \"layer22_qkv_final_tiles\": [{}, {}, {}, {}, {}, {}, {}, {}, {}, {}], \"layer22_paired_compressors\": [{}, {}, {}, {}, {}, {}], \"layer22_attention_output\": {}, \"layer22_attention_hc_post\": {}, \"layer22_ffn_hc_post\": {}}}}},\n  \"persistent_metal_context\"",
++            report.layer22_qkv_checksums[0],
++            report.layer22_qkv_checksums[1],
++            report.layer22_qkv_checksums[2],
++            report.layer22_qkv_checksums[3],
++            report.layer22_qkv_checksums[4],
++            report.layer22_qkv_checksums[5],
++            report.layer22_qkv_checksums[6],
++            report.layer22_qkv_checksums[7],
++            report.layer22_qkv_checksums[8],
++            report.layer22_qkv_checksums[9],
++            report.layer22_compressor_checksums[0],
++            report.layer22_compressor_checksums[1],
++            report.layer22_compressor_checksums[2],
++            report.layer22_compressor_checksums[3],
++            report.layer22_compressor_checksums[4],
++            report.layer22_compressor_checksums[5],
++            report.layer22_attention_output_checksum,
++            report.layer22_after_attention_hc_checksum,
++            report.layer22_after_ffn_hc_checksum,
++        ),
++    );
+     let rendered = rendered
+         .replace(
+             "\"complete_layers\": [0, 1, 2, 3], \"downstream_layer\": 4",
+@@ -6352,6 +6499,26 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
+             "\"complete_layer20_prefill_claim\": true,",
+             "\"complete_layer20_prefill_claim\": true,\n  \"complete_layer21_qkv_state_claim\": true,\n  \"complete_layer21_ratio128_compressor_claim\": true,\n  \"complete_layer21_dense_mixed_attention_claim\": true,\n  \"complete_layer21_attention_hc_post_claim\": true,\n  \"complete_layer21_ffn_claim\": true,\n  \"complete_layer21_prefill_claim\": true,",
+         )
++        .replace(
++            "\"complete_layers\": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19], \"downstream_layer\": null",
++            "\"complete_layers\": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20], \"downstream_layer\": null",
++        )
++        .replace(
++            "\"output_boundary\": \"layer21_ffn_hc_post\"",
++            "\"output_boundary\": \"layer22_ffn_hc_post\"",
++        )
++        .replace(
++            "\"layer21_ffn_router\": \"biased top-6 batch\",",
++            "\"layer21_ffn_router\": \"biased top-6 batch\", \"layer22_qkv_dispatches\": 10, \"layer22_paired_compressor_dispatches\": 30, \"layer22_dense_attention_dispatches\": 9, \"layer22_ffn_dispatches\": 21, \"layer22_ffn_router\": \"biased top-6 batch\",",
++        )
++        .replace(
++            "\"layer21_ffn_hc_post_c0_bitwise_match\": true,",
++            "\"layer21_ffn_hc_post_c0_bitwise_match\": true,\n  \"layer22_qkv_state_c0_bitwise_match\": true,\n  \"layer22_paired_compressors_c0_bitwise_match\": true,\n  \"layer22_attention_output_c0_bitwise_match\": true,\n  \"layer22_attention_hc_post_c0_bitwise_match\": true,\n  \"layer22_ffn_biased_topk_c0_bitwise_match\": true,\n  \"layer22_ffn_outputs_c0_bitwise_match\": true,\n  \"layer22_ffn_hc_post_c0_bitwise_match\": true,",
++        )
++        .replace(
++            "\"complete_layer21_prefill_claim\": true,",
++            "\"complete_layer21_prefill_claim\": true,\n  \"complete_layer22_qkv_state_claim\": true,\n  \"complete_layer22_paired_compressor_claim\": true,\n  \"complete_layer22_dense_mixed_attention_claim\": true,\n  \"complete_layer22_attention_hc_post_claim\": true,\n  \"complete_layer22_ffn_claim\": true,\n  \"complete_layer22_prefill_claim\": true,",
++        )
+         .replace(
+             "\"layer7_compressor_ratio\": 128, \"layer7_compressed_rows\": 16",
+             "\"layer7_compressor_ratio\": 128, \"layer7_compressed_rows\": 16, \"layer8_compressor_ratio\": 4, \"layer8_compressed_rows\": 512, \"layer8_sparse_indexer_topk\": false, \"layer9_compressor_ratio\": 128, \"layer9_compressed_rows\": 16, \"layer10_compressor_ratio\": 4, \"layer10_compressed_rows\": 512, \"layer10_sparse_indexer_topk\": false, \"layer11_compressor_ratio\": 128, \"layer11_compressed_rows\": 16, \"layer12_compressor_ratio\": 4, \"layer12_compressed_rows\": 512, \"layer12_sparse_indexer_topk\": false, \"layer13_compressor_ratio\": 128, \"layer13_compressed_rows\": 16, \"layer14_compressor_ratio\": 4, \"layer14_compressed_rows\": 512, \"layer14_sparse_indexer_topk\": false, \"layer15_compressor_ratio\": 128, \"layer15_compressed_rows\": 16, \"layer16_compressor_ratio\": 4, \"layer16_compressed_rows\": 512, \"layer16_sparse_indexer_topk\": false",
+@@ -6367,6 +6534,10 @@ pub fn write_prefill_layers012_attention_loop_probe_json<W: Write>(
+         .replace(
+             "\"layer20_sparse_indexer_topk\": false",
+             "\"layer20_sparse_indexer_topk\": false, \"layer21_compressor_ratio\": 128, \"layer21_compressed_rows\": 16",
++        )
++        .replace(
++            "\"layer21_compressed_rows\": 16",
++            "\"layer21_compressed_rows\": 16, \"layer22_compressor_ratio\": 4, \"layer22_compressed_rows\": 512, \"layer22_sparse_indexer_topk\": false",
+         );
+     output.write_all(rendered.as_bytes())?;
+     Ok(())
+@@ -10011,6 +10182,188 @@ fn prefill_layer20_qkv_final_tile_fixture() -> Result<[Vec<f32>; 10]> {
+         .map_err(|_| Error::invalid("prefill layer-20 Q/KV fixture count is invalid"))
+ }
+ 
++fn prefill_layer22_compressor_fixture() -> Result<[Vec<f32>; 6]> {
++    let attention_compressed = decode_f32_fixture(
++        PREFILL_LAYER22_ATTN_COMPRESSED_BYTES,
++        "prefill layer-22 attention compressed KV",
++    )?;
++    let attention_state_kv = decode_f32_fixture(
++        PREFILL_LAYER22_ATTN_STATE_KV_BYTES,
++        "prefill layer-22 attention compressor KV state",
++    )?;
++    let attention_state_score = decode_i32_fixture(
++        PREFILL_LAYER22_ATTN_STATE_SCORE_BITS,
++        "prefill layer-22 attention compressor score-state bits",
++    )?
++    .into_iter()
++    .map(|bits| f32::from_bits(bits as u32))
++    .collect::<Vec<_>>();
++    let indexer_compressed = decode_f32_fixture(
++        PREFILL_LAYER22_INDEXER_COMPRESSED_BYTES,
++        "prefill layer-22 indexer compressed KV",
++    )?;
++    let indexer_state_kv = decode_f32_fixture(
++        PREFILL_LAYER22_INDEXER_STATE_KV_BYTES,
++        "prefill layer-22 indexer compressor KV state",
++    )?;
++    let indexer_state_score = decode_i32_fixture(
++        PREFILL_LAYER22_INDEXER_STATE_SCORE_BITS,
++        "prefill layer-22 indexer compressor score-state bits",
++    )?
++    .into_iter()
++    .map(|bits| f32::from_bits(bits as u32))
++    .collect::<Vec<_>>();
++    if attention_compressed.len() != 512 * 512
++        || attention_state_kv.len() != 8 * 1024
++        || attention_state_score.len() != 8 * 1024
++        || indexer_compressed.len() != 512 * 128
++        || indexer_state_kv.len() != 8 * 256
++        || indexer_state_score.len() != 8 * 256
++    {
++        return Err(Error::invalid(
++            "prefill layer-22 compressor fixture dimensions are invalid",
++        ));
++    }
++    Ok([
++        attention_compressed,
++        attention_state_kv,
++        attention_state_score,
++        indexer_compressed,
++        indexer_state_kv,
++        indexer_state_score,
++    ])
++}
++
++fn prefill_layer22_attention_fixture() -> Result<(Vec<f32>, Vec<f32>)> {
++    let attention = decode_f32_fixture(
++        PREFILL_LAYER22_ATTENTION_OUTPUT_BYTES,
++        "prefill layer-22 dense mixed-attention output",
++    )?;
++    let hc_final_tile = decode_f32_fixture(
++        PREFILL_LAYER22_HC_ATTN_POST_FINAL_TILE_BYTES,
++        "prefill layer-22 attention HC post final tile",
++    )?;
++    if attention.len() != 2048 * 4096 || hc_final_tile.len() != 32 * 4 * 4096 {
++        return Err(Error::invalid(
++            "prefill layer-22 attention fixture dimensions are invalid",
++        ));
++    }
++    Ok((attention, hc_final_tile))
++}
++
++fn prefill_layer22_attention_diagnostics_fixture() -> Result<[Vec<f32>; 3]> {
++    let tensors = [
++        decode_f32_fixture(
++            PREFILL_LAYER22_KQV_OUT_ROW0_BYTES,
++            "layer-22 KQV output row 0",
++        )?,
++        decode_f32_fixture(
++            PREFILL_LAYER22_KQV_BACK_ROW0_BYTES,
++            "layer-22 KQV back row 0",
++        )?,
++        decode_f32_fixture(
++            PREFILL_LAYER22_ATTN_LOW_ROW0_BYTES,
++            "layer-22 attention low row 0",
++        )?,
++    ];
++    if tensors[0].len() != 32_768 || tensors[1].len() != 32_768 || tensors[2].len() != 8_192 {
++        return Err(Error::invalid(
++            "prefill layer-22 attention diagnostic fixture dimensions are invalid",
++        ));
++    }
++    Ok(tensors)
++}
++
++fn prefill_layer22_complete_final_tile_fixture() -> Result<PrefillLayer3CompleteFixture> {
++    let fixture = PrefillLayer3CompleteFixture {
++        ffn_cur: decode_f32_fixture(
++            PREFILL_LAYER22_FFN_CUR_FINAL_TILE_BYTES,
++            "prefill layer-22 FFN HC ingress final tile",
++        )?,
++        ffn_norm: decode_f32_fixture(
++            PREFILL_LAYER22_FFN_NORM_FINAL_TILE_BYTES,
++            "prefill layer-22 FFN norm final tile",
++        )?,
++        router_selected: decode_i32_fixture(
++            PREFILL_LAYER22_ROUTER_SELECTED_FINAL_TILE_BYTES,
++            "prefill layer-22 biased top-k selections final tile",
++        )?,
++        router_weights: decode_f32_fixture(
++            PREFILL_LAYER22_ROUTER_WEIGHTS_FINAL_TILE_BYTES,
++            "prefill layer-22 router weights final tile",
++        )?,
++        routed_out: decode_f32_fixture(
++            PREFILL_LAYER22_ROUTED_OUT_FINAL_TILE_BYTES,
++            "prefill layer-22 routed output final tile",
++        )?,
++        shared_out: decode_f32_fixture(
++            PREFILL_LAYER22_SHARED_OUT_FINAL_TILE_BYTES,
++            "prefill layer-22 shared output final tile",
++        )?,
++        hc_post: decode_f32_fixture(
++            PREFILL_LAYER22_HC_FFN_POST_FINAL_TILE_BYTES,
++            "prefill layer-22 FFN HC post final tile",
++        )?,
++    };
++    if fixture.ffn_cur.len() != 32 * 4096
++        || fixture.ffn_norm.len() != 32 * 4096
++        || fixture.router_selected.len() != 32 * 6
++        || fixture.router_weights.len() != 32 * 6
++        || fixture.routed_out.len() != 32 * 4096
++        || fixture.shared_out.len() != 32 * 4096
++        || fixture.hc_post.len() != 32 * 4 * 4096
++    {
++        return Err(Error::invalid(
++            "prefill layer-22 complete fixture dimensions are invalid",
++        ));
++    }
++    Ok(fixture)
++}
++
++fn prefill_layer22_qkv_final_tile_fixture() -> Result<[Vec<f32>; 10]> {
++    let labels = [
++        "HC attention ingress",
++        "attention norm",
++        "Q-Lora",
++        "Q-Lora norm",
++        "KV raw",
++        "KV norm",
++        "Q raw",
++        "Q current",
++        "KV rope",
++        "KV current",
++    ];
++    let expected_lengths = [
++        32 * 4096,
++        32 * 4096,
++        32 * 1024,
++        32 * 1024,
++        32 * 512,
++        32 * 512,
++        32 * 32768,
++        32 * 32768,
++        32 * 512,
++        32 * 512,
++    ];
++    let mut tensors = Vec::with_capacity(PREFILL_LAYER22_QKV_FINAL_TILE_BYTES.len());
++    for ((bytes, label), expected_length) in PREFILL_LAYER22_QKV_FINAL_TILE_BYTES
++        .into_iter()
++        .zip(labels)
++        .zip(expected_lengths)
++    {
++        let tensor = decode_f32_fixture(bytes, &format!("prefill layer-22 {label} final tile"))?;
++        if tensor.len() != expected_length {
++            return Err(Error::invalid(format!(
++                "prefill layer-22 {label} fixture dimensions are invalid"
++            )));
++        }
++        tensors.push(tensor);
++    }
++    tensors
++        .try_into()
++        .map_err(|_| Error::invalid("prefill layer-22 Q/KV fixture count is invalid"))
++}
++
+ fn prefill_layer21_compressor_fixture() -> Result<(Vec<f32>, Vec<f32>, Vec<i32>)> {
+     let compressed = decode_f32_fixture(
+         PREFILL_LAYER21_ATTN_COMPRESSED_BYTES,
+@@ -11610,6 +11963,17 @@ mod imp {
+         layer21_attn_output_b_offset: u64,
+         layer21_attn_output_b_bytes: u64,
+         layer21_ffn: RawPrefillFfnWeights,
++        layer22_kvnorm: RawPrefillKvnormWeights,
++        layer22_q_b_offset: u64,
++        layer22_q_b_bytes: u64,
++        layer22_compressor: RawPrefillCompressorWeights,
++        layer22_attn_sinks_offset: u64,
++        layer22_attn_sinks_bytes: u64,
++        layer22_attn_output_a_offset: u64,
++        layer22_attn_output_a_bytes: u64,
++        layer22_attn_output_b_offset: u64,
++        layer22_attn_output_b_bytes: u64,
++        layer22_ffn: RawPrefillFfnWeights,
+     }
+ 
+     #[repr(C)]
+@@ -12427,6 +12791,34 @@ mod imp {
+             layer21_router_weights_final_tile: *mut f32,
+             layer21_routed_out_final_tile: *mut f32,
+             layer21_shared_out_final_tile: *mut f32,
++            layer22_hc_attn_pre_final_tile: *mut f32,
++            layer22_attn_norm_final_tile: *mut f32,
++            layer22_q_lora_final_tile: *mut f32,
++            layer22_q_lora_norm_final_tile: *mut f32,
++            layer22_kv_raw_final_tile: *mut f32,
++            layer22_kv_norm_final_tile: *mut f32,
++            layer22_q_raw_final_tile: *mut f32,
++            layer22_q_cur_final_tile: *mut f32,
++            layer22_kv_rope_final_tile: *mut f32,
++            layer22_kv_cur_final_tile: *mut f32,
++            layer22_attn_compressed: *mut f32,
++            layer22_attn_state_kv: *mut f32,
++            layer22_attn_state_score: *mut i32,
++            layer22_indexer_compressed: *mut f32,
++            layer22_indexer_state_kv: *mut f32,
++            layer22_indexer_state_score: *mut i32,
++            layer22_kqv_out_row0: *mut f32,
++            layer22_kqv_back_row0: *mut f32,
++            layer22_attn_low_row0: *mut f32,
++            layer22_attention_output: *mut f32,
++            layer22_after_attention_hc: *mut f32,
++            layer22_after_ffn_hc: *mut f32,
++            layer22_ffn_cur_final_tile: *mut f32,
++            layer22_ffn_norm_final_tile: *mut f32,
++            layer22_router_selected_final_tile: *mut i32,
++            layer22_router_weights_final_tile: *mut f32,
++            layer22_routed_out_final_tile: *mut f32,
++            layer22_shared_out_final_tile: *mut f32,
+             result: *mut RawPrefillLayer2AttentionResult,
+             error: *mut c_char,
+             error_bytes: usize,
+@@ -15414,6 +15806,12 @@ mod imp {
+         let expected_layer21_attention_diagnostics =
+             prefill_layer21_attention_diagnostics_fixture()?;
+         let expected_layer21_complete = prefill_layer21_complete_final_tile_fixture()?;
++        let expected_layer22_qkv = prefill_layer22_qkv_final_tile_fixture()?;
++        let expected_layer22_compressor = prefill_layer22_compressor_fixture()?;
++        let expected_layer22_attention = prefill_layer22_attention_fixture()?;
++        let expected_layer22_attention_diagnostics =
++            prefill_layer22_attention_diagnostics_fixture()?;
++        let expected_layer22_complete = prefill_layer22_complete_final_tile_fixture()?;
+         let q_b = exact_tensor(model, "blk.2.attn_q_b.weight", 8, &[1024, 32768])?;
+         let sinks = exact_tensor(model, "blk.2.attn_sinks.weight", 0, &[64])?;
+         let output_a = exact_tensor(model, "blk.2.attn_output_a.weight", 8, &[4096, 8192])?;
+@@ -16237,6 +16635,67 @@ mod imp {
+             exact_tensor(model, "blk.19.ffn_up_shexp.weight", 8, &[4096, 2048])?;
+         let layer21_shared_down =
+             exact_tensor(model, "blk.19.ffn_down_shexp.weight", 8, &[2048, 4096])?;
++        let layer22_hc_fn = exact_tensor(model, "blk.20.hc_attn_fn.weight", 1, &[16384, 24])?;
++        let layer22_hc_scale = exact_tensor(model, "blk.20.hc_attn_scale.weight", 0, &[3])?;
++        let layer22_hc_base = exact_tensor(model, "blk.20.hc_attn_base.weight", 0, &[24])?;
++        let layer22_norm = exact_tensor(model, "blk.20.attn_norm.weight", 0, &[4096])?;
++        let layer22_q_a = exact_tensor(model, "blk.20.attn_q_a.weight", 8, &[4096, 1024])?;
++        let layer22_q_a_norm = exact_tensor(model, "blk.20.attn_q_a_norm.weight", 0, &[1024])?;
++        let layer22_kv = exact_tensor(model, "blk.20.attn_kv.weight", 8, &[4096, 512])?;
++        let layer22_kv_norm = exact_tensor(model, "blk.20.attn_kv_a_norm.weight", 0, &[512])?;
++        let layer22_q_b = exact_tensor(model, "blk.20.attn_q_b.weight", 8, &[1024, 32768])?;
++        let layer22_attn_ape =
++            exact_tensor(model, "blk.20.attn_compressor_ape.weight", 1, &[1024, 4])?;
++        let layer22_attn_kv =
++            exact_tensor(model, "blk.20.attn_compressor_kv.weight", 1, &[4096, 1024])?;
++        let layer22_attn_gate = exact_tensor(
++            model,
++            "blk.20.attn_compressor_gate.weight",
++            1,
++            &[4096, 1024],
++        )?;
++        let layer22_attn_compressor_norm =
++            exact_tensor(model, "blk.20.attn_compressor_norm.weight", 0, &[512])?;
++        let layer22_indexer_ape =
++            exact_tensor(model, "blk.20.indexer_compressor_ape.weight", 1, &[256, 4])?;
++        let layer22_indexer_kv = exact_tensor(
++            model,
++            "blk.20.indexer_compressor_kv.weight",
++            1,
++            &[4096, 256],
++        )?;
++        let layer22_indexer_gate = exact_tensor(
++            model,
++            "blk.20.indexer_compressor_gate.weight",
++            1,
++            &[4096, 256],
++        )?;
++        let layer22_indexer_compressor_norm =
++            exact_tensor(model, "blk.20.indexer_compressor_norm.weight", 0, &[128])?;
++        let layer22_sinks = exact_tensor(model, "blk.20.attn_sinks.weight", 0, &[64])?;
++        let layer22_output_a =
++            exact_tensor(model, "blk.20.attn_output_a.weight", 8, &[4096, 8192])?;
++        let layer22_output_b =
++            exact_tensor(model, "blk.20.attn_output_b.weight", 8, &[8192, 4096])?;
++        let layer22_ffn_hc_fn = exact_tensor(model, "blk.20.hc_ffn_fn.weight", 1, &[16384, 24])?;
++        let layer22_ffn_hc_scale = exact_tensor(model, "blk.20.hc_ffn_scale.weight", 0, &[3])?;
++        let layer22_ffn_hc_base = exact_tensor(model, "blk.20.hc_ffn_base.weight", 0, &[24])?;
++        let layer22_ffn_norm = exact_tensor(model, "blk.20.ffn_norm.weight", 0, &[4096])?;
++        let layer22_router_gate =
++            exact_tensor(model, "blk.20.ffn_gate_inp.weight", 1, &[4096, 256])?;
++        let layer22_router_bias = exact_tensor(model, "blk.20.exp_probs_b.bias", 0, &[256])?;
++        let layer22_routed_gate =
++            exact_tensor(model, "blk.20.ffn_gate_exps.weight", 16, &[4096, 2048, 256])?;
++        let layer22_routed_up =
++            exact_tensor(model, "blk.20.ffn_up_exps.weight", 16, &[4096, 2048, 256])?;
++        let layer22_routed_down =
++            exact_tensor(model, "blk.20.ffn_down_exps.weight", 10, &[2048, 4096, 256])?;
++        let layer22_shared_gate =
++            exact_tensor(model, "blk.20.ffn_gate_shexp.weight", 8, &[4096, 2048])?;
++        let layer22_shared_up =
++            exact_tensor(model, "blk.20.ffn_up_shexp.weight", 8, &[4096, 2048])?;
++        let layer22_shared_down =
++            exact_tensor(model, "blk.20.ffn_down_shexp.weight", 8, &[2048, 4096])?;
+         let weights = RawPrefillLayer2AttentionWeights {
+             q_b_offset: q_b.absolute_offset,
+             q_b_bytes: q_b.bytes,
+@@ -17433,6 +17892,78 @@ mod imp {
+                 shared_down_offset: layer21_shared_down.absolute_offset,
+                 shared_down_bytes: layer21_shared_down.bytes,
+             },
++            layer22_kvnorm: RawPrefillKvnormWeights {
++                ingress: RawPrefillAttentionIngressWeights {
++                    hc_fn_offset: layer22_hc_fn.absolute_offset,
++                    hc_fn_bytes: layer22_hc_fn.bytes,
++                    hc_scale_offset: layer22_hc_scale.absolute_offset,
++                    hc_scale_bytes: layer22_hc_scale.bytes,
++                    hc_base_offset: layer22_hc_base.absolute_offset,
++                    hc_base_bytes: layer22_hc_base.bytes,
++                    norm_offset: layer22_norm.absolute_offset,
++                    norm_bytes: layer22_norm.bytes,
++                    q_a_offset: layer22_q_a.absolute_offset,
++                    q_a_bytes: layer22_q_a.bytes,
++                },
++                q_a_norm_offset: layer22_q_a_norm.absolute_offset,
++                q_a_norm_bytes: layer22_q_a_norm.bytes,
++                kv_offset: layer22_kv.absolute_offset,
++                kv_bytes: layer22_kv.bytes,
++                kv_norm_offset: layer22_kv_norm.absolute_offset,
++                kv_norm_bytes: layer22_kv_norm.bytes,
++            },
++            layer22_q_b_offset: layer22_q_b.absolute_offset,
++            layer22_q_b_bytes: layer22_q_b.bytes,
++            layer22_compressor: RawPrefillCompressorWeights {
++                attn_ape_offset: layer22_attn_ape.absolute_offset,
++                attn_ape_bytes: layer22_attn_ape.bytes,
++                attn_kv_offset: layer22_attn_kv.absolute_offset,
++                attn_kv_bytes: layer22_attn_kv.bytes,
++                attn_gate_offset: layer22_attn_gate.absolute_offset,
++                attn_gate_bytes: layer22_attn_gate.bytes,
++                attn_norm_offset: layer22_attn_compressor_norm.absolute_offset,
++                attn_norm_bytes: layer22_attn_compressor_norm.bytes,
++                indexer_ape_offset: layer22_indexer_ape.absolute_offset,
++                indexer_ape_bytes: layer22_indexer_ape.bytes,
++                indexer_kv_offset: layer22_indexer_kv.absolute_offset,
++                indexer_kv_bytes: layer22_indexer_kv.bytes,
++                indexer_gate_offset: layer22_indexer_gate.absolute_offset,
++                indexer_gate_bytes: layer22_indexer_gate.bytes,
++                indexer_norm_offset: layer22_indexer_compressor_norm.absolute_offset,
++                indexer_norm_bytes: layer22_indexer_compressor_norm.bytes,
++            },
++            layer22_attn_sinks_offset: layer22_sinks.absolute_offset,
++            layer22_attn_sinks_bytes: layer22_sinks.bytes,
++            layer22_attn_output_a_offset: layer22_output_a.absolute_offset,
++            layer22_attn_output_a_bytes: layer22_output_a.bytes,
++            layer22_attn_output_b_offset: layer22_output_b.absolute_offset,
++            layer22_attn_output_b_bytes: layer22_output_b.bytes,
++            layer22_ffn: RawPrefillFfnWeights {
++                hc_fn_offset: layer22_ffn_hc_fn.absolute_offset,
++                hc_fn_bytes: layer22_ffn_hc_fn.bytes,
++                hc_scale_offset: layer22_ffn_hc_scale.absolute_offset,
++                hc_scale_bytes: layer22_ffn_hc_scale.bytes,
++                hc_base_offset: layer22_ffn_hc_base.absolute_offset,
++                hc_base_bytes: layer22_ffn_hc_base.bytes,
++                norm_offset: layer22_ffn_norm.absolute_offset,
++                norm_bytes: layer22_ffn_norm.bytes,
++                router_gate_offset: layer22_router_gate.absolute_offset,
++                router_gate_bytes: layer22_router_gate.bytes,
++                router_hash_offset: layer22_router_bias.absolute_offset,
++                router_hash_bytes: layer22_router_bias.bytes,
++                routed_gate_offset: layer22_routed_gate.absolute_offset,
++                routed_gate_bytes: layer22_routed_gate.bytes,
++                routed_up_offset: layer22_routed_up.absolute_offset,
++                routed_up_bytes: layer22_routed_up.bytes,
++                routed_down_offset: layer22_routed_down.absolute_offset,
++                routed_down_bytes: layer22_routed_down.bytes,
++                shared_gate_offset: layer22_shared_gate.absolute_offset,
++                shared_gate_bytes: layer22_shared_gate.bytes,
++                shared_up_offset: layer22_shared_up.absolute_offset,
++                shared_up_bytes: layer22_shared_up.bytes,
++                shared_down_offset: layer22_shared_down.absolute_offset,
++                shared_down_bytes: layer22_shared_down.bytes,
++            },
+         };
+         let mut actual = vec![0.0_f32; expected.len()];
+         let mut actual_hc = vec![0.0_f32; 2048 * 4 * 4096];
+@@ -17988,6 +18519,41 @@ mod imp {
+         let mut actual_layer21_router_weights = vec![0.0_f32; 32 * 6];
+         let mut actual_layer21_routed_out = vec![0.0_f32; 32 * 4096];
+         let mut actual_layer21_shared_out = vec![0.0_f32; 32 * 4096];
++        let mut actual_layer22_qkv: [Vec<f32>; 10] = [
++            vec![0.0_f32; 32 * 4096],
++            vec![0.0_f32; 32 * 4096],
++            vec![0.0_f32; 32 * 1024],
++            vec![0.0_f32; 32 * 1024],
++            vec![0.0_f32; 32 * 512],
++            vec![0.0_f32; 32 * 512],
++            vec![0.0_f32; 32 * 32768],
++            vec![0.0_f32; 32 * 32768],
++            vec![0.0_f32; 32 * 512],
++            vec![0.0_f32; 32 * 512],
++        ];
++        let layer22_qkv_pointers = actual_layer22_qkv
++            .each_mut()
++            .map(|tensor| tensor.as_mut_ptr());
++        let mut actual_layer22_compressor: [Vec<f32>; 6] = [
++            vec![0.0_f32; 512 * 512],
++            vec![0.0_f32; 8 * 1024],
++            vec![0.0_f32; 8 * 1024],
++            vec![0.0_f32; 512 * 128],
++            vec![0.0_f32; 8 * 256],
++            vec![0.0_f32; 8 * 256],
++        ];
++        let mut actual_layer22_kqv_out_row0 = vec![0.0_f32; 32_768];
++        let mut actual_layer22_kqv_back_row0 = vec![0.0_f32; 32_768];
++        let mut actual_layer22_attn_low_row0 = vec![0.0_f32; 8_192];
++        let mut actual_layer22_attention = vec![0.0_f32; 2048 * 4096];
++        let mut actual_layer22_after_attention_hc = vec![0.0_f32; 2048 * 4 * 4096];
++        let mut actual_layer22_after_ffn_hc = vec![0.0_f32; 2048 * 4 * 4096];
++        let mut actual_layer22_ffn_cur_final_tile = vec![0.0_f32; 32 * 4096];
++        let mut actual_layer22_ffn_norm_final_tile = vec![0.0_f32; 32 * 4096];
++        let mut actual_layer22_router_selected = vec![0_i32; 32 * 6];
++        let mut actual_layer22_router_weights = vec![0.0_f32; 32 * 6];
++        let mut actual_layer22_routed_out = vec![0.0_f32; 32 * 4096];
++        let mut actual_layer22_shared_out = vec![0.0_f32; 32 * 4096];
+         let mut raw = RawPrefillLayer2AttentionResult::default();
+         let mut error = [0 as c_char; ERROR_BYTES];
+         let succeeded = unsafe {
+@@ -18454,6 +19020,34 @@ mod imp {
+                 actual_layer21_router_weights.as_mut_ptr(),
+                 actual_layer21_routed_out.as_mut_ptr(),
+                 actual_layer21_shared_out.as_mut_ptr(),
++                layer22_qkv_pointers[0],
++                layer22_qkv_pointers[1],
++                layer22_qkv_pointers[2],
++                layer22_qkv_pointers[3],
++                layer22_qkv_pointers[4],
++                layer22_qkv_pointers[5],
++                layer22_qkv_pointers[6],
++                layer22_qkv_pointers[7],
++                layer22_qkv_pointers[8],
++                layer22_qkv_pointers[9],
++                actual_layer22_compressor[0].as_mut_ptr(),
++                actual_layer22_compressor[1].as_mut_ptr(),
++                actual_layer22_compressor[2].as_mut_ptr().cast::<i32>(),
++                actual_layer22_compressor[3].as_mut_ptr(),
++                actual_layer22_compressor[4].as_mut_ptr(),
++                actual_layer22_compressor[5].as_mut_ptr().cast::<i32>(),
++                actual_layer22_kqv_out_row0.as_mut_ptr(),
++                actual_layer22_kqv_back_row0.as_mut_ptr(),
++                actual_layer22_attn_low_row0.as_mut_ptr(),
++                actual_layer22_attention.as_mut_ptr(),
++                actual_layer22_after_attention_hc.as_mut_ptr(),
++                actual_layer22_after_ffn_hc.as_mut_ptr(),
++                actual_layer22_ffn_cur_final_tile.as_mut_ptr(),
++                actual_layer22_ffn_norm_final_tile.as_mut_ptr(),
++                actual_layer22_router_selected.as_mut_ptr(),
++                actual_layer22_router_weights.as_mut_ptr(),
++                actual_layer22_routed_out.as_mut_ptr(),
++                actual_layer22_shared_out.as_mut_ptr(),
+                 &mut raw,
+                 error.as_mut_ptr(),
+                 error.len(),
+@@ -21602,6 +22196,177 @@ mod imp {
+                 "prefill layer-21 FFN HC post full-2K checksum mismatch",
+             ));
+         }
++        for ((label, actual), expected) in [
++            "HC attention ingress",
++            "attention norm",
++            "Q-Lora",
++            "Q-Lora norm",
++            "KV raw",
++            "KV norm",
++            "Q raw",
++            "Q current",
++            "KV rope",
++            "KV current",
++        ]
++        .into_iter()
++        .zip(&actual_layer22_qkv)
++        .zip(&expected_layer22_qkv)
++        {
++            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
++                if actual.to_bits() != expected.to_bits() {
++                    return Err(Error::invalid(format!(
++                        "prefill layer-22 {label} C0 mismatch at final-tile element {index}: actual={:#010x} expected={:#010x}",
++                        actual.to_bits(), expected.to_bits(),
++                    )));
++                }
++            }
++        }
++        for ((label, actual), expected) in [
++            "attention compressed KV",
++            "attention KV state",
++            "attention score-state bits",
++            "indexer compressed KV",
++            "indexer KV state",
++            "indexer score-state bits",
++        ]
++        .into_iter()
++        .zip(&actual_layer22_compressor)
++        .zip(&expected_layer22_compressor)
++        {
++            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
++                if actual.to_bits() != expected.to_bits() {
++                    return Err(Error::invalid(format!(
++                        "prefill layer-22 {label} C0 mismatch at element {index}: actual={:#010x} expected={:#010x}",
++                        actual.to_bits(), expected.to_bits(),
++                    )));
++                }
++            }
++        }
++        for (label, actual, expected) in [
++            (
++                "KQV output row 0",
++                &actual_layer22_kqv_out_row0,
++                &expected_layer22_attention_diagnostics[0],
++            ),
++            (
++                "KQV back row 0",
++                &actual_layer22_kqv_back_row0,
++                &expected_layer22_attention_diagnostics[1],
++            ),
++            (
++                "attention low row 0",
++                &actual_layer22_attn_low_row0,
++                &expected_layer22_attention_diagnostics[2],
++            ),
++        ] {
++            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
++                if actual.to_bits() != expected.to_bits() {
++                    return Err(Error::invalid(format!(
++                        "prefill layer-22 {label} C0 mismatch at element {index}: actual={:#010x} expected={:#010x}",
++                        actual.to_bits(), expected.to_bits(),
++                    )));
++                }
++            }
++        }
++        for (index, (actual, expected)) in actual_layer22_attention
++            .iter()
++            .zip(&expected_layer22_attention.0)
++            .enumerate()
++        {
++            if actual.to_bits() != expected.to_bits() {
++                return Err(Error::invalid(format!(
++                    "prefill layer-22 dense mixed-attention C0 mismatch at element {index}: actual={:#010x} expected={:#010x}",
++                    actual.to_bits(), expected.to_bits(),
++                )));
++            }
++        }
++        let layer22_hc_final_tile = &actual_layer22_after_attention_hc
++            [actual_layer22_after_attention_hc.len() - expected_layer22_attention.1.len()..];
++        for (index, (actual, expected)) in layer22_hc_final_tile
++            .iter()
++            .zip(&expected_layer22_attention.1)
++            .enumerate()
++        {
++            if actual.to_bits() != expected.to_bits() {
++                return Err(Error::invalid(format!(
++                    "prefill layer-22 attention HC post C0 mismatch at final-tile element {index}: actual={:#010x} expected={:#010x}",
++                    actual.to_bits(), expected.to_bits(),
++                )));
++            }
++        }
++        if checksum_f32(&actual_layer22_after_attention_hc)
++            != PREFILL_LAYER22_HC_ATTN_POST_FULL_CHECKSUM
++        {
++            return Err(Error::invalid(
++                "prefill layer-22 attention HC post full-2K checksum mismatch",
++            ));
++        }
++        for (index, (actual, expected)) in actual_layer22_router_selected
++            .iter()
++            .zip(&expected_layer22_complete.router_selected)
++            .enumerate()
++        {
++            if actual != expected {
++                return Err(Error::invalid(format!(
++                    "prefill layer-22 router selection C0 mismatch at final-tile element {index}: actual={actual} expected={expected}",
++                )));
++            }
++        }
++        for (label, actual, expected) in [
++            (
++                "HC collapse",
++                &actual_layer22_ffn_cur_final_tile,
++                &expected_layer22_complete.ffn_cur,
++            ),
++            (
++                "learned norm",
++                &actual_layer22_ffn_norm_final_tile,
++                &expected_layer22_complete.ffn_norm,
++            ),
++            (
++                "router weights",
++                &actual_layer22_router_weights,
++                &expected_layer22_complete.router_weights,
++            ),
++            (
++                "routed output",
++                &actual_layer22_routed_out,
++                &expected_layer22_complete.routed_out,
++            ),
++            (
++                "shared output",
++                &actual_layer22_shared_out,
++                &expected_layer22_complete.shared_out,
++            ),
++        ] {
++            for (index, (actual, expected)) in actual.iter().zip(expected).enumerate() {
++                if actual.to_bits() != expected.to_bits() {
++                    return Err(Error::invalid(format!(
++                        "prefill layer-22 {label} C0 mismatch at final-tile element {index}: actual={:#010x} expected={:#010x}",
++                        actual.to_bits(), expected.to_bits(),
++                    )));
++                }
++            }
++        }
++        let layer22_ffn_hc_final_tile = &actual_layer22_after_ffn_hc
++            [actual_layer22_after_ffn_hc.len() - expected_layer22_complete.hc_post.len()..];
++        for (index, (actual, expected)) in layer22_ffn_hc_final_tile
++            .iter()
++            .zip(&expected_layer22_complete.hc_post)
++            .enumerate()
++        {
++            if actual.to_bits() != expected.to_bits() {
++                return Err(Error::invalid(format!(
++                    "prefill layer-22 FFN HC post C0 mismatch at final-tile element {index}: actual={:#010x} expected={:#010x}",
++                    actual.to_bits(), expected.to_bits(),
++                )));
++            }
++        }
++        if checksum_f32(&actual_layer22_after_ffn_hc) != PREFILL_LAYER22_HC_FFN_POST_FULL_CHECKSUM {
++            return Err(Error::invalid(
++                "prefill layer-22 FFN HC post full-2K checksum mismatch",
++            ));
++        }
+         for (index, (actual, expected)) in actual_router_selected
+             .iter()
+             .zip(&expected_router_selected)
+@@ -21712,9 +22477,9 @@ mod imp {
+             || raw.raw_kv_rows != 2048
+             || raw.compressed_kv_rows != 512
+             || raw.layer3_compressed_kv_rows != 16
+-            || raw.dispatches != 1132
+-            || raw.wrapped_model_ranges != 584
+-            || raw.pointer_matches != 584
++            || raw.dispatches != 1202
++            || raw.wrapped_model_ranges != 616
++            || raw.pointer_matches != 616
+         {
+             return Err(Error::invalid(
+                 "Metal prefill layer-2 attention returned an unexpected schedule or mapping",
+@@ -21793,6 +22558,10 @@ mod imp {
+             layer21_compressor_fixture_id: PREFILL_LAYER21_COMPRESSOR_FIXTURE_ID,
+             layer21_attention_fixture_id: PREFILL_LAYER21_ATTENTION_FIXTURE_ID,
+             layer21_complete_fixture_id: PREFILL_LAYER21_COMPLETE_FIXTURE_ID,
++            layer22_qkv_fixture_id: PREFILL_LAYER22_QKV_FIXTURE_ID,
++            layer22_compressor_fixture_id: PREFILL_LAYER22_COMPRESSOR_FIXTURE_ID,
++            layer22_attention_fixture_id: PREFILL_LAYER22_ATTENTION_FIXTURE_ID,
++            layer22_complete_fixture_id: PREFILL_LAYER22_COMPLETE_FIXTURE_ID,
+             rows: raw.rows,
+             raw_kv_rows: raw.raw_kv_rows,
+             compressed_kv_rows: raw.compressed_kv_rows,
+@@ -21981,6 +22750,15 @@ mod imp {
+             layer21_attention_output_checksum: checksum_f32(&actual_layer21_attention),
+             layer21_after_attention_hc_checksum: checksum_f32(&actual_layer21_after_attention_hc),
+             layer21_after_ffn_hc_checksum: checksum_f32(&actual_layer21_after_ffn_hc),
++            layer22_qkv_checksums: actual_layer22_qkv
++                .each_ref()
++                .map(|tensor| checksum_f32(tensor)),
++            layer22_compressor_checksums: actual_layer22_compressor
++                .each_ref()
++                .map(|tensor| checksum_f32(tensor)),
++            layer22_attention_output_checksum: checksum_f32(&actual_layer22_attention),
++            layer22_after_attention_hc_checksum: checksum_f32(&actual_layer22_after_attention_hc),
++            layer22_after_ffn_hc_checksum: checksum_f32(&actual_layer22_after_ffn_hc),
+         })
+     }
+ 
+@@ -27037,13 +27815,17 @@ mod tests {
+             layer21_compressor_fixture_id: PREFILL_LAYER21_COMPRESSOR_FIXTURE_ID,
+             layer21_attention_fixture_id: PREFILL_LAYER21_ATTENTION_FIXTURE_ID,
+             layer21_complete_fixture_id: PREFILL_LAYER21_COMPLETE_FIXTURE_ID,
++            layer22_qkv_fixture_id: PREFILL_LAYER22_QKV_FIXTURE_ID,
++            layer22_compressor_fixture_id: PREFILL_LAYER22_COMPRESSOR_FIXTURE_ID,
++            layer22_attention_fixture_id: PREFILL_LAYER22_ATTENTION_FIXTURE_ID,
++            layer22_complete_fixture_id: PREFILL_LAYER22_COMPLETE_FIXTURE_ID,
+             rows: 2048,
+             raw_kv_rows: 2048,
+             compressed_kv_rows: 512,
+             layer3_compressed_kv_rows: 16,
+-            dispatches: 1132,
+-            wrapped_model_ranges: 584,
+-            pointer_matches: 584,
++            dispatches: 1202,
++            wrapped_model_ranges: 616,
++            pointer_matches: 616,
+             wall_ms: 196.0,
+             gpu_ms: 169.0,
+             output_checksum: checksum_f32(&prefill_layer2_attention_fixture().unwrap()),
+@@ -27277,6 +28059,17 @@ mod tests {
+             layer21_attention_output_checksum: PREFILL_LAYER21_ATTENTION_OUTPUT_CHECKSUM,
+             layer21_after_attention_hc_checksum: PREFILL_LAYER21_HC_ATTN_POST_FULL_CHECKSUM,
+             layer21_after_ffn_hc_checksum: PREFILL_LAYER21_HC_FFN_POST_FULL_CHECKSUM,
++            layer22_qkv_checksums: prefill_layer22_qkv_final_tile_fixture()
++                .unwrap()
++                .each_ref()
++                .map(|tensor| checksum_f32(tensor)),
++            layer22_compressor_checksums: prefill_layer22_compressor_fixture()
++                .unwrap()
++                .each_ref()
++                .map(|tensor| checksum_f32(tensor)),
++            layer22_attention_output_checksum: PREFILL_LAYER22_ATTENTION_OUTPUT_CHECKSUM,
++            layer22_after_attention_hc_checksum: PREFILL_LAYER22_HC_ATTN_POST_FULL_CHECKSUM,
++            layer22_after_ffn_hc_checksum: PREFILL_LAYER22_HC_FFN_POST_FULL_CHECKSUM,
+         }
+     }
+ 
+@@ -28626,8 +29419,8 @@ mod tests {
+         )));
+         assert!(text.contains("\"compressed_kv_rows\": 512"));
+         assert!(text.contains("\"sparse_indexer_topk\": false"));
+-        assert!(text.contains("\"terminal_dispatches\": 1132"));
+-        assert!(text.contains("\"wrapped_terminal_model_ranges\": 584"));
++        assert!(text.contains("\"terminal_dispatches\": 1202"));
++        assert!(text.contains("\"wrapped_terminal_model_ranges\": 616"));
+         assert!(text.contains("\"layer3_compressor_ratio\": 128"));
+         assert!(text.contains("\"layer3_compressed_rows\": 16"));
+         assert!(text.contains("\"layer7_compressor_ratio\": 128"));
+@@ -28650,9 +29443,9 @@ mod tests {
+         assert!(text.contains("\"layer3_ffn_hc_post_c0_bitwise_match\": true"));
+         assert!(text.contains("\"complete_layer3_ffn_claim\": true"));
+         assert!(text.contains("\"complete_layer3_prefill_claim\": true"));
+-        assert!(text.contains("\"output_boundary\": \"layer21_ffn_hc_post\""));
++        assert!(text.contains("\"output_boundary\": \"layer22_ffn_hc_post\""));
+         assert!(text.contains(
+-            "\"complete_layers\": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]"
++            "\"complete_layers\": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]"
+         ));
+         assert!(text.contains("\"downstream_layer\": null"));
+         assert!(text.contains("\"layer4_qkv_state_c0_bitwise_match\": true"));
+@@ -28874,6 +29667,19 @@ mod tests {
+         assert!(text.contains("\"layer21_attention_hc_post_c0_bitwise_match\": true"));
+         assert!(text.contains("\"layer21_ffn_hc_post_c0_bitwise_match\": true"));
+         assert!(text.contains("\"complete_layer21_prefill_claim\": true"));
++        assert!(text.contains("\"layer22_compressor_ratio\": 4"));
++        assert!(text.contains("\"layer22_compressed_rows\": 512"));
++        assert!(text.contains("\"layer22_sparse_indexer_topk\": false"));
++        assert!(text.contains("\"layer22_qkv_dispatches\": 10"));
++        assert!(text.contains("\"layer22_paired_compressor_dispatches\": 30"));
++        assert!(text.contains("\"layer22_dense_attention_dispatches\": 9"));
++        assert!(text.contains("\"layer22_ffn_dispatches\": 21"));
++        assert!(text.contains("\"layer22_qkv_state_c0_bitwise_match\": true"));
++        assert!(text.contains("\"layer22_paired_compressors_c0_bitwise_match\": true"));
++        assert!(text.contains("\"layer22_attention_output_c0_bitwise_match\": true"));
++        assert!(text.contains("\"layer22_attention_hc_post_c0_bitwise_match\": true"));
++        assert!(text.contains("\"layer22_ffn_hc_post_c0_bitwise_match\": true"));
++        assert!(text.contains("\"complete_layer22_prefill_claim\": true"));
+         assert!(text.contains("\"sparse_ratio4_decode_claim\": false"));
+     }
+ 
+@@ -30073,6 +30879,71 @@ mod tests {
+         assert_eq!(fixture.hc_post.len(), 32 * 4 * 4096);
+     }
+ 
++    #[test]
++    fn prefill_layer22_qkv_fixture_has_target_shapes() {
++        let tensors = prefill_layer22_qkv_final_tile_fixture().unwrap();
++        assert_eq!(
++            tensors.each_ref().map(|tensor| tensor.len()),
++            [
++                32 * 4096,
++                32 * 4096,
++                32 * 1024,
++                32 * 1024,
++                32 * 512,
++                32 * 512,
++                32 * 32768,
++                32 * 32768,
++                32 * 512,
++                32 * 512,
++            ]
++        );
++        assert!(tensors.iter().flatten().all(|value| value.is_finite()));
++    }
++
++    #[test]
++    fn prefill_layer22_compressor_fixture_has_target_shapes() {
++        let tensors = prefill_layer22_compressor_fixture().unwrap();
++        assert_eq!(tensors[0].len(), 512 * 512);
++        assert_eq!(tensors[1].len(), 8 * 1024);
++        assert_eq!(tensors[2].len(), 8 * 1024);
++        assert_eq!(tensors[3].len(), 512 * 128);
++        assert_eq!(tensors[4].len(), 8 * 256);
++        assert_eq!(tensors[5].len(), 8 * 256);
++        assert!(tensors.iter().flatten().all(|value| !value.is_nan()));
++        assert!(tensors[2].iter().any(|value| *value == f32::NEG_INFINITY));
++        assert!(tensors[5].iter().any(|value| *value == f32::NEG_INFINITY));
++    }
++
++    #[test]
++    fn prefill_layer22_attention_fixture_has_target_shapes() {
++        let (attention, hc_post) = prefill_layer22_attention_fixture().unwrap();
++        assert_eq!(attention.len(), 2048 * 4096);
++        assert_eq!(hc_post.len(), 32 * 4 * 4096);
++        assert!(attention.iter().all(|value| value.is_finite()));
++        assert!(hc_post.iter().all(|value| value.is_finite()));
++    }
++
++    #[test]
++    fn prefill_layer22_attention_diagnostics_fixture_has_target_shapes() {
++        let diagnostics = prefill_layer22_attention_diagnostics_fixture().unwrap();
++        assert_eq!(diagnostics[0].len(), 32_768);
++        assert_eq!(diagnostics[1].len(), 32_768);
++        assert_eq!(diagnostics[2].len(), 8_192);
++        assert!(diagnostics.iter().flatten().all(|value| value.is_finite()));
++    }
++
++    #[test]
++    fn prefill_layer22_complete_fixture_has_target_shapes() {
++        let fixture = prefill_layer22_complete_final_tile_fixture().unwrap();
++        assert_eq!(fixture.ffn_cur.len(), 32 * 4096);
++        assert_eq!(fixture.ffn_norm.len(), 32 * 4096);
++        assert_eq!(fixture.router_selected.len(), 32 * 6);
++        assert_eq!(fixture.router_weights.len(), 32 * 6);
++        assert_eq!(fixture.routed_out.len(), 32 * 4096);
++        assert_eq!(fixture.shared_out.len(), 32 * 4096);
++        assert_eq!(fixture.hc_post.len(), 32 * 4 * 4096);
++    }
++
+     #[test]
+     fn prefill_layer21_qkv_fixture_has_target_shapes() {
+         let tensors = prefill_layer21_qkv_final_tile_fixture().unwrap();
+diff --git a/rust-star/runtime/src/metal_shim.h b/rust-star/runtime/src/metal_shim.h
+index 98075db..6b47b20 100644
+--- a/rust-star/runtime/src/metal_shim.h
++++ b/rust-star/runtime/src/metal_shim.h
+@@ -275,6 +275,13 @@ typedef struct rust_star_metal_prefill_layer2_attention_weights {
+     uint64_t layer21_attn_output_a_offset, layer21_attn_output_a_bytes;
+     uint64_t layer21_attn_output_b_offset, layer21_attn_output_b_bytes;
+     rust_star_metal_prefill_ffn_weights layer21_ffn;
++    rust_star_metal_prefill_kvnorm_weights layer22_kvnorm;
++    uint64_t layer22_q_b_offset, layer22_q_b_bytes;
++    rust_star_metal_prefill_compressor_weights layer22_compressor;
++    uint64_t layer22_attn_sinks_offset, layer22_attn_sinks_bytes;
++    uint64_t layer22_attn_output_a_offset, layer22_attn_output_a_bytes;
++    uint64_t layer22_attn_output_b_offset, layer22_attn_output_b_bytes;
++    rust_star_metal_prefill_ffn_weights layer22_ffn;
+ 
+ } rust_star_metal_prefill_layer2_attention_weights;
+ 
+@@ -1029,6 +1036,34 @@ int rust_star_metal_run_prefill_layer2_attention(
+     float *layer21_router_weights_final_tile,
+     float *layer21_routed_out_final_tile,
+     float *layer21_shared_out_final_tile,
++    float *layer22_hc_attn_pre_final_tile,
++    float *layer22_attn_norm_final_tile,
++    float *layer22_q_lora_final_tile,
++    float *layer22_q_lora_norm_final_tile,
++    float *layer22_kv_raw_final_tile,
++    float *layer22_kv_norm_final_tile,
++    float *layer22_q_raw_final_tile,
++    float *layer22_q_cur_final_tile,
++    float *layer22_kv_rope_final_tile,
++    float *layer22_kv_cur_final_tile,
++    float *layer22_attn_compressed,
++    float *layer22_attn_state_kv,
++    int32_t *layer22_attn_state_score,
++    float *layer22_indexer_compressed,
++    float *layer22_indexer_state_kv,
++    int32_t *layer22_indexer_state_score,
++    float *layer22_kqv_out_row0,
++    float *layer22_kqv_back_row0,
++    float *layer22_attn_low_row0,
++    float *layer22_attention_output,
++    float *layer22_after_attention_hc,
++    float *layer22_after_ffn_hc,
++    float *layer22_ffn_cur_final_tile,
++    float *layer22_ffn_norm_final_tile,
++    int32_t *layer22_router_selected_final_tile,
++    float *layer22_router_weights_final_tile,
++    float *layer22_routed_out_final_tile,
++    float *layer22_shared_out_final_tile,
+     rust_star_metal_prefill_layer2_attention_result *result,
+     char *error,
+     size_t error_bytes);
+diff --git a/rust-star/runtime/src/metal_shim.m b/rust-star/runtime/src/metal_shim.m
+index b7cf257..47e0cb0 100644
+--- a/rust-star/runtime/src/metal_shim.m
++++ b/rust-star/runtime/src/metal_shim.m
+@@ -445,6 +445,18 @@ @interface RustStarMetalContext : NSObject
+ @property(nonatomic, strong) id<MTLBuffer> prefillLayer21AttnStateScore;
+ @property(nonatomic, strong) id<MTLBuffer> prefillLayer21AfterAttentionHc;
+ @property(nonatomic, strong) id<MTLBuffer> prefillLayer21AfterFfnHc;
++@property(nonatomic, strong) id<MTLBuffer> prefillLayer22FullQ;
++@property(nonatomic, strong) id<MTLBuffer> prefillLayer22FullKv;
++@property(nonatomic, strong) id<MTLBuffer> prefillLayer22InputHc;
++@property(nonatomic, strong) id<MTLBuffer> prefillLayer22AttnSplit;
++@property(nonatomic, strong) id<MTLBuffer> prefillLayer22AttnCompressed;
++@property(nonatomic, strong) id<MTLBuffer> prefillLayer22AttnStateKv;
++@property(nonatomic, strong) id<MTLBuffer> prefillLayer22AttnStateScore;
++@property(nonatomic, strong) id<MTLBuffer> prefillLayer22IndexerCompressed;
++@property(nonatomic, strong) id<MTLBuffer> prefillLayer22IndexerStateKv;
++@property(nonatomic, strong) id<MTLBuffer> prefillLayer22IndexerStateScore;
++@property(nonatomic, strong) id<MTLBuffer> prefillLayer22AfterAttentionHc;
++@property(nonatomic, strong) id<MTLBuffer> prefillLayer22AfterFfnHc;
+ @property(nonatomic, assign) uint32_t prefillKvRows;
+ @property(nonatomic, assign) double chainedWallEnd;
+ @property(nonatomic, assign) BOOL chainedReady;
+@@ -5813,6 +5825,34 @@ int rust_star_metal_run_prefill_layer2_attention(
+     float *layer21_router_weights_final_tile,
+     float *layer21_routed_out_final_tile,
+     float *layer21_shared_out_final_tile,
++    float *layer22_hc_attn_pre_final_tile,
++    float *layer22_attn_norm_final_tile,
++    float *layer22_q_lora_final_tile,
++    float *layer22_q_lora_norm_final_tile,
++    float *layer22_kv_raw_final_tile,
++    float *layer22_kv_norm_final_tile,
++    float *layer22_q_raw_final_tile,
++    float *layer22_q_cur_final_tile,
++    float *layer22_kv_rope_final_tile,
++    float *layer22_kv_cur_final_tile,
++    float *layer22_attn_compressed,
++    float *layer22_attn_state_kv,
++    int32_t *layer22_attn_state_score,
++    float *layer22_indexer_compressed,
++    float *layer22_indexer_state_kv,
++    int32_t *layer22_indexer_state_score,
++    float *layer22_kqv_out_row0,
++    float *layer22_kqv_back_row0,
++    float *layer22_attn_low_row0,
++    float *layer22_attention_output,
++    float *layer22_after_attention_hc,
++    float *layer22_after_ffn_hc,
++    float *layer22_ffn_cur_final_tile,
++    float *layer22_ffn_norm_final_tile,
++    int32_t *layer22_router_selected_final_tile,
++    float *layer22_router_weights_final_tile,
++    float *layer22_routed_out_final_tile,
++    float *layer22_shared_out_final_tile,
+     rust_star_metal_prefill_layer2_attention_result *result,
+     char *error,
+     size_t error_bytes)
+@@ -6056,6 +6096,21 @@ int rust_star_metal_run_prefill_layer2_attention(
+         !layer21_ffn_norm_final_tile || !layer21_router_selected_final_tile ||
+         !layer21_router_weights_final_tile || !layer21_routed_out_final_tile ||
+         !layer21_shared_out_final_tile ||
++        !layer22_hc_attn_pre_final_tile || !layer22_attn_norm_final_tile ||
++        !layer22_q_lora_final_tile || !layer22_q_lora_norm_final_tile ||
++        !layer22_kv_raw_final_tile || !layer22_kv_norm_final_tile ||
++        !layer22_q_raw_final_tile || !layer22_q_cur_final_tile ||
++        !layer22_kv_rope_final_tile || !layer22_kv_cur_final_tile ||
++        !layer22_attn_compressed || !layer22_attn_state_kv ||
++        !layer22_attn_state_score || !layer22_indexer_compressed ||
++        !layer22_indexer_state_kv || !layer22_indexer_state_score ||
++        !layer22_kqv_out_row0 || !layer22_kqv_back_row0 ||
++        !layer22_attn_low_row0 || !layer22_attention_output ||
++        !layer22_after_attention_hc || !layer22_after_ffn_hc ||
++        !layer22_ffn_cur_final_tile || !layer22_ffn_norm_final_tile ||
++        !layer22_router_selected_final_tile ||
++        !layer22_router_weights_final_tile || !layer22_routed_out_final_tile ||
++        !layer22_shared_out_final_tile ||
+         !result) {
+         return fail_with_message(error, error_bytes,
+             @"prefill layer-2 attention received a null input");
+@@ -6911,8 +6966,58 @@ int rust_star_metal_run_prefill_layer2_attention(
+             weights->layer21_ffn.shared_up_bytes !=
+                 2048ull*(n_embd/32u)*34u ||
+             weights->layer21_ffn.shared_down_bytes !=
++                n_embd*(2048u/32u)*34u ||
++            weights->layer22_kvnorm.ingress.hc_fn_bytes !=
++                16384ull*24ull*sizeof(uint16_t) ||
++            weights->layer22_kvnorm.ingress.hc_scale_bytes != 3u*sizeof(float) ||
++            weights->layer22_kvnorm.ingress.hc_base_bytes != 24u*sizeof(float) ||
++            weights->layer22_kvnorm.ingress.norm_bytes != n_embd*sizeof(float) ||
++            weights->layer22_kvnorm.ingress.q_a_bytes !=
++                1024ull*((uint64_t)n_embd/32u)*34u ||
++            weights->layer22_kvnorm.q_a_norm_bytes != 1024u*sizeof(float) ||
++            weights->layer22_kvnorm.kv_bytes !=
++                512ull*((uint64_t)n_embd/32u)*34u ||
++            weights->layer22_kvnorm.kv_norm_bytes != 512u*sizeof(float) ||
++            weights->layer22_q_b_bytes !=
++                (uint64_t)q_dim*(1024u/32u)*34u ||
++            weights->layer22_compressor.attn_ape_bytes !=
++                4ull*layer4_attn_compressor_width*sizeof(uint16_t) ||
++            weights->layer22_compressor.attn_kv_bytes !=
++                (uint64_t)n_embd*layer4_attn_compressor_width*sizeof(uint16_t) ||
++            weights->layer22_compressor.attn_gate_bytes !=
++                (uint64_t)n_embd*layer4_attn_compressor_width*sizeof(uint16_t) ||
++            weights->layer22_compressor.attn_norm_bytes !=
++                layer4_attn_compressor_head*sizeof(float) ||
++            weights->layer22_compressor.indexer_ape_bytes !=
++                4ull*layer4_indexer_compressor_width*sizeof(uint16_t) ||
++            weights->layer22_compressor.indexer_kv_bytes !=
++                (uint64_t)n_embd*layer4_indexer_compressor_width*sizeof(uint16_t) ||
++            weights->layer22_compressor.indexer_gate_bytes !=
++                (uint64_t)n_embd*layer4_indexer_compressor_width*sizeof(uint16_t) ||
++            weights->layer22_compressor.indexer_norm_bytes !=
++                layer4_indexer_compressor_head*sizeof(float) ||
++            weights->layer22_attn_sinks_bytes != n_head*sizeof(float) ||
++            weights->layer22_attn_output_a_bytes !=
++                8ull*output_rank*((uint64_t)n_embd/32u)*34u ||
++            weights->layer22_attn_output_b_bytes !=
++                (uint64_t)n_embd*((uint64_t)(8u*output_rank)/32u)*34u ||
++            weights->layer22_ffn.hc_fn_bytes !=
++                16384ull*24ull*sizeof(uint16_t) ||
++            weights->layer22_ffn.hc_scale_bytes != 3u*sizeof(float) ||
++            weights->layer22_ffn.hc_base_bytes != 24u*sizeof(float) ||
++            weights->layer22_ffn.norm_bytes != n_embd*sizeof(float) ||
++            weights->layer22_ffn.router_gate_bytes !=
++                (uint64_t)n_embd*256u*sizeof(uint16_t) ||
++            weights->layer22_ffn.router_hash_bytes != 256u*sizeof(float) ||
++            weights->layer22_ffn.routed_gate_bytes != 256ull*2048ull*1056ull ||
++            weights->layer22_ffn.routed_up_bytes != 256ull*2048ull*1056ull ||
++            weights->layer22_ffn.routed_down_bytes != 256ull*n_embd*672ull ||
++            weights->layer22_ffn.shared_gate_bytes !=
++                2048ull*(n_embd/32u)*34u ||
++            weights->layer22_ffn.shared_up_bytes !=
++                2048ull*(n_embd/32u)*34u ||
++            weights->layer22_ffn.shared_down_bytes !=
+                 n_embd*(2048u/32u)*34u
+-
+ ) {
+             return fail_with_message(error, error_bytes,
+                 @"prefill layer-2 attention tensor shapes are invalid");
+@@ -6921,7 +7026,7 @@ int rust_star_metal_run_prefill_layer2_attention(
+             !ensure_moe_output_pipelines(context, error, error_bytes)) return 0;
+         memset(result, 0, sizeof(*result));
+ 
+-        uint64_t offsets[584] = {
++        uint64_t offsets[616] = {
+             weights->q_b_offset, weights->attn_sinks_offset,
+             weights->attn_output_a_offset, weights->attn_output_b_offset,
+             weights->ffn.hc_fn_offset, weights->ffn.hc_scale_offset,
+@@ -7438,8 +7543,40 @@ int rust_star_metal_run_prefill_layer2_attention(
+             weights->layer21_ffn.shared_gate_offset,
+             weights->layer21_ffn.shared_up_offset,
+             weights->layer21_ffn.shared_down_offset,
++            weights->layer22_kvnorm.ingress.hc_fn_offset,
++            weights->layer22_kvnorm.ingress.hc_scale_offset,
++            weights->layer22_kvnorm.ingress.hc_base_offset,
++            weights->layer22_kvnorm.ingress.norm_offset,
++            weights->layer22_kvnorm.ingress.q_a_offset,
++            weights->layer22_kvnorm.q_a_norm_offset,
++            weights->layer22_kvnorm.kv_offset,
++            weights->layer22_kvnorm.kv_norm_offset,
++            weights->layer22_q_b_offset,
++            weights->layer22_compressor.attn_ape_offset,
++            weights->layer22_compressor.attn_kv_offset,
++            weights->layer22_compressor.attn_gate_offset,
++            weights->layer22_compressor.attn_norm_offset,
++            weights->layer22_compressor.indexer_ape_offset,
++            weights->layer22_compressor.indexer_kv_offset,
++            weights->layer22_compressor.indexer_gate_offset,
++            weights->layer22_compressor.indexer_norm_offset,
++            weights->layer22_attn_sinks_offset,
++            weights->layer22_attn_output_a_offset,
++            weights->layer22_attn_output_b_offset,
++            weights->layer22_ffn.hc_fn_offset,
++            weights->layer22_ffn.hc_scale_offset,
++            weights->layer22_ffn.hc_base_offset,
++            weights->layer22_ffn.norm_offset,
++            weights->layer22_ffn.router_gate_offset,
++            weights->layer22_ffn.router_hash_offset,
++            weights->layer22_ffn.routed_gate_offset,
++            weights->layer22_ffn.routed_up_offset,
++            weights->layer22_ffn.routed_down_offset,
++            weights->layer22_ffn.shared_gate_offset,
++            weights->layer22_ffn.shared_up_offset,
++            weights->layer22_ffn.shared_down_offset,
+         };
+-        uint64_t sizes[584] = {
++        uint64_t sizes[616] = {
+             weights->q_b_bytes, weights->attn_sinks_bytes,
+             weights->attn_output_a_bytes, weights->attn_output_b_bytes,
+             weights->ffn.hc_fn_bytes, weights->ffn.hc_scale_bytes,
+@@ -7956,11 +8093,43 @@ int rust_star_metal_run_prefill_layer2_attention(
+             weights->layer21_ffn.shared_gate_bytes,
+             weights->layer21_ffn.shared_up_bytes,
+             weights->layer21_ffn.shared_down_bytes,
++            weights->layer22_kvnorm.ingress.hc_fn_bytes,
++            weights->layer22_kvnorm.ingress.hc_scale_bytes,
++            weights->layer22_kvnorm.ingress.hc_base_bytes,
++            weights->layer22_kvnorm.ingress.norm_bytes,
++            weights->layer22_kvnorm.ingress.q_a_bytes,
++            weights->layer22_kvnorm.q_a_norm_bytes,
++            weights->layer22_kvnorm.kv_bytes,
++            weights->layer22_kvnorm.kv_norm_bytes,
++            weights->layer22_q_b_bytes,
++            weights->layer22_compressor.attn_ape_bytes,
++            weights->layer22_compressor.attn_kv_bytes,
++            weights->layer22_compressor.attn_gate_bytes,
++            weights->layer22_compressor.attn_norm_bytes,
++            weights->layer22_compressor.indexer_ape_bytes,
++            weights->layer22_compressor.indexer_kv_bytes,
++            weights->layer22_compressor.indexer_gate_bytes,
++            weights->layer22_compressor.indexer_norm_bytes,
++            weights->layer22_attn_sinks_bytes,
++            weights->layer22_attn_output_a_bytes,
++            weights->layer22_attn_output_b_bytes,
++            weights->layer22_ffn.hc_fn_bytes,
++            weights->layer22_ffn.hc_scale_bytes,
++            weights->layer22_ffn.hc_base_bytes,
++            weights->layer22_ffn.norm_bytes,
++            weights->layer22_ffn.router_gate_bytes,
++            weights->layer22_ffn.router_hash_bytes,
++            weights->layer22_ffn.routed_gate_bytes,
++            weights->layer22_ffn.routed_up_bytes,
++            weights->layer22_ffn.routed_down_bytes,
++            weights->layer22_ffn.shared_gate_bytes,
++            weights->layer22_ffn.shared_up_bytes,
++            weights->layer22_ffn.shared_down_bytes,
+         };
+-        id<MTLBuffer> model_buffers[584] = { nil };
+-        NSUInteger inner[584] = { 0 };
+-        BOOL matches[584] = { NO };
+-        for (uint32_t index = 0; index < 524u; index++) {
++        id<MTLBuffer> model_buffers[616] = { nil };
++        NSUInteger inner[616] = { 0 };
++        BOOL matches[616] = { NO };
++        for (uint32_t index = 0; index < 556u; index++) {
+             model_buffers[index] = wrap_model_range(
+                 context, model_mapping, model_bytes, offsets[index], sizes[index],
+                 &inner[index], &matches[index], error, error_bytes);
+@@ -9165,6 +9334,82 @@ int rust_star_metal_run_prefill_layer2_attention(
+         RUST_STAR_NEW_L2_ATTN_BUFFER(layer21_routed_out_buffer, output_bytes);
+         RUST_STAR_NEW_L2_ATTN_BUFFER(layer21_shared_out_buffer, output_bytes);
+         RUST_STAR_NEW_L2_ATTN_BUFFER(layer21_after_ffn_hc_buffer, hc_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_flat_hc_buffer, hc_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_mix_buffer, ffn_mix_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_split_buffer, ffn_mix_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_cur_buffer, output_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_norm_buffer, output_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_q_lora_buffer, layer3_q_rank_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_q_norm_buffer, layer3_q_rank_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_kv_raw_buffer, layer3_kv_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_kv_norm_buffer, layer3_kv_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_kv_norm_snapshot_buffer,
++        layer3_kv_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_kv_rope_buffer, layer3_kv_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_q_raw_buffer, q_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_q_cur_buffer, q_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_attn_projected_kv_buffer,
++        layer4_attn_projection_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_attn_projected_score_buffer,
++        layer4_attn_projection_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_attn_score_ape_buffer,
++        layer4_attn_projection_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_attn_packed_kv_buffer,
++        layer4_attn_projection_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_attn_packed_score_buffer,
++        layer4_attn_projection_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_attn_compressed_buffer,
++        layer4_attn_compressed_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_attn_state_kv_buffer,
++        layer4_attn_state_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_attn_state_score_buffer,
++        layer4_attn_state_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_indexer_projected_kv_buffer,
++        layer4_indexer_projection_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_indexer_projected_score_buffer,
++        layer4_indexer_projection_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_indexer_score_ape_buffer,
++        layer4_indexer_projection_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_indexer_packed_kv_buffer,
++        layer4_indexer_projection_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_indexer_packed_score_buffer,
++        layer4_indexer_projection_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_indexer_compressed_buffer,
++        layer4_indexer_compressed_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_indexer_state_kv_buffer,
++        layer4_indexer_state_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_indexer_state_score_buffer,
++        layer4_indexer_state_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_compressed_position_buffer,
++        compressed_rows*sizeof(int32_t));
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_kqv_out_row0_buffer,
++        q_dim*sizeof(float));
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_kqv_back_row0_buffer,
++        q_dim*sizeof(float));
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_attn_low_row0_buffer,
++        8u*output_rank*sizeof(float));
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_attention_output_buffer,
++        output_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_after_attention_hc_buffer,
++        hc_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_ffn_flat_hc_buffer, hc_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_ffn_mix_buffer, ffn_mix_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_ffn_split_buffer, ffn_mix_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_ffn_cur_buffer, output_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_ffn_norm_buffer, output_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_router_logits_buffer,
++        ffn_router_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_router_probs_buffer,
++        ffn_router_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_router_selected_buffer,
++        ffn_selected_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_router_weights_buffer,
++        ffn_selected_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_router_weight_sums_buffer,
++        rows*sizeof(float));
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_routed_out_buffer, output_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_shared_out_buffer, output_bytes);
++        RUST_STAR_NEW_L2_ATTN_BUFFER(layer22_after_ffn_hc_buffer, hc_bytes);
+ 
+ #undef RUST_STAR_NEW_L2_ATTN_BUFFER
+         if (!q_buffer || !staged_kv_buffer || !mask_buffer || !block_buffer ||
+@@ -9617,7 +9862,38 @@ int rust_star_metal_run_prefill_layer2_attention(
+             !layer21_router_probs_buffer || !layer21_router_selected_buffer ||
+             !layer21_router_weights_buffer ||
+             !layer21_router_weight_sums_buffer || !layer21_routed_out_buffer ||
+-            !layer21_shared_out_buffer || !layer21_after_ffn_hc_buffer
++            !layer21_shared_out_buffer || !layer21_after_ffn_hc_buffer ||
++            !layer22_flat_hc_buffer || !layer22_mix_buffer ||
++            !layer22_split_buffer || !layer22_cur_buffer || !layer22_norm_buffer ||
++            !layer22_q_lora_buffer || !layer22_q_norm_buffer ||
++            !layer22_kv_raw_buffer || !layer22_kv_norm_buffer ||
++            !layer22_kv_norm_snapshot_buffer || !layer22_kv_rope_buffer ||
++            !layer22_q_raw_buffer || !layer22_q_cur_buffer ||
++            !layer22_attn_projected_kv_buffer ||
++            !layer22_attn_projected_score_buffer ||
++            !layer22_attn_score_ape_buffer || !layer22_attn_packed_kv_buffer ||
++            !layer22_attn_packed_score_buffer ||
++            !layer22_attn_compressed_buffer || !layer22_attn_state_kv_buffer ||
++            !layer22_attn_state_score_buffer ||
++            !layer22_indexer_projected_kv_buffer ||
++            !layer22_indexer_projected_score_buffer ||
++            !layer22_indexer_score_ape_buffer ||
++            !layer22_indexer_packed_kv_buffer ||
++            !layer22_indexer_packed_score_buffer ||
++            !layer22_indexer_compressed_buffer ||
++            !layer22_indexer_state_kv_buffer ||
++            !layer22_indexer_state_score_buffer ||
++            !layer22_compressed_position_buffer ||
++            !layer22_kqv_out_row0_buffer || !layer22_kqv_back_row0_buffer ||
++            !layer22_attn_low_row0_buffer || !layer22_attention_output_buffer ||
++            !layer22_after_attention_hc_buffer ||
++            !layer22_ffn_flat_hc_buffer || !layer22_ffn_mix_buffer ||
++            !layer22_ffn_split_buffer || !layer22_ffn_cur_buffer ||
++            !layer22_ffn_norm_buffer || !layer22_router_logits_buffer ||
++            !layer22_router_probs_buffer || !layer22_router_selected_buffer ||
++            !layer22_router_weights_buffer ||
++            !layer22_router_weight_sums_buffer || !layer22_routed_out_buffer ||
++            !layer22_shared_out_buffer || !layer22_after_ffn_hc_buffer
+ ) {
+             return fail_with_message(error, error_bytes,
+                 @"failed to allocate prefill layer-2 attention buffers");
+@@ -9710,6 +9986,11 @@ int rust_star_metal_run_prefill_layer2_attention(
+         for (uint32_t row = 0; row < compressed_rows; row++) {
+             layer20_compressed_positions[row] = (int32_t)(row*compressor_ratio);
+         }
++        int32_t *layer22_compressed_positions =
++            layer22_compressed_position_buffer.contents;
++        for (uint32_t row = 0; row < compressed_rows; row++) {
++            layer22_compressed_positions[row] = (int32_t)(row*compressor_ratio);
++        }
+         int32_t *layer5_compressed_positions =
+             layer5_compressed_position_buffer.contents;
+         for (uint32_t row = 0; row < layer3_compressed_rows; row++) {
+@@ -9878,6 +10159,21 @@ int rust_star_metal_run_prefill_layer2_attention(
+              index < layer4_indexer_state_bytes/sizeof(uint32_t); index++) {
+             layer20_indexer_state_score_bits[index] = 0xff800000u;
+         }
++        memset(layer22_attn_state_kv_buffer.contents, 0, layer4_attn_state_bytes);
++        memset(layer22_indexer_state_kv_buffer.contents, 0,
++               layer4_indexer_state_bytes);
++        uint32_t *layer22_attn_state_score_bits =
++            layer22_attn_state_score_buffer.contents;
++        for (NSUInteger index = 0;
++             index < layer4_attn_state_bytes/sizeof(uint32_t); index++) {
++            layer22_attn_state_score_bits[index] = 0xff800000u;
++        }
++        uint32_t *layer22_indexer_state_score_bits =
++            layer22_indexer_state_score_buffer.contents;
++        for (NSUInteger index = 0;
++             index < layer4_indexer_state_bytes/sizeof(uint32_t); index++) {
++            layer22_indexer_state_score_bits[index] = 0xff800000u;
++        }
+         memset(layer3_attn_state_kv_buffer.contents, 0,
+                layer3_compressor_state_bytes);
+         uint32_t *layer3_state_score_bits =
+@@ -18541,6 +18837,477 @@ int rust_star_metal_run_prefill_layer2_attention(
+         [encoder setBuffer:layer21_ffn_split_buffer offset:8u*sizeof(float) atIndex:4];
+         [encoder setBuffer:layer21_shared_out_buffer offset:0 atIndex:5];
+         [encoder setBuffer:layer21_after_ffn_hc_buffer offset:0 atIndex:6];
++        [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++        [encoder setComputePipelineState:context.rmsNormF32Pipeline];
++        [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
++        [encoder setBuffer:layer21_after_ffn_hc_buffer offset:0 atIndex:1];
++        [encoder setBuffer:layer21_after_ffn_hc_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer21_after_ffn_hc_buffer offset:0 atIndex:3];
++        [encoder setBuffer:layer22_flat_hc_buffer offset:0 atIndex:4];
++        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
++             threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
++
++        [encoder setComputePipelineState:context.f16PrefillPipeline];
++        [encoder setBytes:&ffn_hc_mm_args length:sizeof(ffn_hc_mm_args) atIndex:0];
++        [encoder setBuffer:model_buffers[584] offset:inner[584] atIndex:1];
++        [encoder setBuffer:layer22_flat_hc_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer22_mix_buffer offset:0 atIndex:3];
++        [encoder setThreadgroupMemoryLength:8192u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,1,1)
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
++
++        [encoder setComputePipelineState:context.hcIngressPipeline];
++        [encoder setBytes:&ffn_hc_ingress_args length:sizeof(ffn_hc_ingress_args) atIndex:0];
++        [encoder setBuffer:layer22_mix_buffer offset:0 atIndex:1];
++        [encoder setBuffer:model_buffers[585] offset:inner[585] atIndex:2];
++        [encoder setBuffer:model_buffers[586] offset:inner[586] atIndex:3];
++        [encoder setBuffer:layer21_after_ffn_hc_buffer offset:0 atIndex:4];
++        [encoder setBuffer:layer22_split_buffer offset:0 atIndex:5];
++        [encoder setBuffer:layer22_cur_buffer offset:0 atIndex:6];
++        [encoder setBuffer:model_buffers[587] offset:inner[587] atIndex:7];
++        [encoder setBuffer:layer22_norm_buffer offset:0 atIndex:8];
++        [encoder setThreadgroupMemoryLength:(n_embd+4u+32u)*sizeof(float) atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
++             threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
++
++        [encoder setComputePipelineState:context.q8PrefillPipeline];
++        [encoder setBytes:&layer6_q_a_args length:sizeof(layer6_q_a_args) atIndex:0];
++        [encoder setBuffer:model_buffers[588] offset:inner[588] atIndex:1];
++        [encoder setBuffer:layer22_norm_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer22_q_lora_buffer offset:0 atIndex:3];
++        [encoder setThreadgroupMemoryLength:6144u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,1024u/64u,1)
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
++
++        [encoder setComputePipelineState:context.q8PrefillPipeline];
++        [encoder setBytes:&layer6_kv_args length:sizeof(layer6_kv_args) atIndex:0];
++        [encoder setBuffer:model_buffers[590] offset:inner[590] atIndex:1];
++        [encoder setBuffer:layer22_norm_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer22_kv_raw_buffer offset:0 atIndex:3];
++        [encoder setThreadgroupMemoryLength:6144u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,512u/64u,1)
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
++
++        [encoder setComputePipelineState:context.qkvNormPipeline];
++        [encoder setBytes:&layer3_qkv_norm_args
++                   length:sizeof(layer3_qkv_norm_args) atIndex:0];
++        [encoder setBuffer:layer22_q_lora_buffer offset:0 atIndex:1];
++        [encoder setBuffer:model_buffers[589] offset:inner[589] atIndex:2];
++        [encoder setBuffer:layer22_q_norm_buffer offset:0 atIndex:3];
++        [encoder setBuffer:layer22_kv_raw_buffer offset:0 atIndex:4];
++        [encoder setBuffer:model_buffers[591] offset:inner[591] atIndex:5];
++        [encoder setBuffer:layer22_kv_norm_buffer offset:0 atIndex:6];
++        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows,2,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++
++        [encoder setComputePipelineState:context.q8PrefillPipeline];
++        [encoder setBytes:&layer6_q_b_args length:sizeof(layer6_q_b_args) atIndex:0];
++        [encoder setBuffer:model_buffers[592] offset:inner[592] atIndex:1];
++        [encoder setBuffer:layer22_q_norm_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer22_q_raw_buffer offset:0 atIndex:3];
++        [encoder setThreadgroupMemoryLength:6144u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,q_dim/64u,1)
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
++        [encoder endEncoding];
++
++        id<MTLBlitCommandEncoder> layer22_blit = [command blitCommandEncoder];
++        if (!layer22_blit) return fail_with_message(error, error_bytes,
++            @"failed to create prefill layer-20 Q/KV snapshot encoder");
++        [layer22_blit copyFromBuffer:layer22_q_raw_buffer sourceOffset:0
++                           toBuffer:layer22_q_cur_buffer destinationOffset:0
++                               size:q_bytes];
++        [layer22_blit copyFromBuffer:layer22_kv_norm_buffer sourceOffset:0
++                           toBuffer:layer22_kv_norm_snapshot_buffer destinationOffset:0
++                               size:layer3_kv_bytes];
++        [layer22_blit endEncoding];
++
++        encoder = [command computeCommandEncoder];
++        if (!encoder) return fail_with_message(error, error_bytes,
++            @"failed to create prefill layer-20 RoPE encoder");
++        [encoder setComputePipelineState:context.headNormRopePipeline];
++        [encoder setBytes:&q_rope_args length:sizeof(q_rope_args) atIndex:0];
++        [encoder setBuffer:layer22_q_cur_buffer offset:0 atIndex:1];
++        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(n_head,rows,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++        [encoder setComputePipelineState:context.ropeTailPipeline];
++        [encoder setBytes:&layer3_kv_rope_args
++                   length:sizeof(layer3_kv_rope_args) atIndex:0];
++        [encoder setBuffer:layer22_kv_norm_buffer offset:0 atIndex:1];
++        [encoder setBuffer:position_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer22_kv_norm_buffer offset:0 atIndex:3];
++        [encoder setBuffer:layer22_kv_norm_buffer offset:0 atIndex:4];
++        [encoder dispatchThreadgroups:MTLSizeMake(1,rows,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++        [encoder endEncoding];
++
++        layer22_blit = [command blitCommandEncoder];
++        if (!layer22_blit) return fail_with_message(error, error_bytes,
++            @"failed to create prefill layer-20 KVrope snapshot encoder");
++        [layer22_blit copyFromBuffer:layer22_kv_norm_buffer sourceOffset:0
++                           toBuffer:layer22_kv_rope_buffer destinationOffset:0
++                               size:layer3_kv_bytes];
++        [layer22_blit endEncoding];
++
++        encoder = [command computeCommandEncoder];
++        if (!encoder) return fail_with_message(error, error_bytes,
++            @"failed to create prefill layer-20 KV finalization encoder");
++        [encoder setComputePipelineState:context.compressorFp8Pipeline];
++        [encoder setBytes:&layer3_kv_fp8_args
++                   length:sizeof(layer3_kv_fp8_args) atIndex:0];
++        [encoder setBuffer:layer22_kv_norm_buffer offset:0 atIndex:1];
++        [encoder setBuffer:layer22_kv_norm_buffer offset:0 atIndex:2];
++        [encoder setThreadgroupMemoryLength:64u*sizeof(float) atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
++             threadsPerThreadgroup:MTLSizeMake(64,1,1)];
++
++#define RUST_STAR_ENCODE_LAYER12_COMPRESSOR_PROJECTION(args, index, width, output) do { \
++        [encoder setComputePipelineState:context.f16AlignedPrefillPipeline]; \
++        [encoder setBytes:&(args) length:sizeof(args) atIndex:0]; \
++        [encoder setBuffer:model_buffers[(index)] offset:inner[(index)] atIndex:1]; \
++        [encoder setBuffer:layer22_norm_buffer offset:0 atIndex:2]; \
++        [encoder setBuffer:(output) offset:0 atIndex:3]; \
++        [encoder setThreadgroupMemoryLength:6144u atIndex:0]; \
++        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,(width)/64u,1) \
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)]; \
++    } while (0)
++        RUST_STAR_ENCODE_LAYER12_COMPRESSOR_PROJECTION(
++            layer6_attn_compressor_kv_args, 534,
++            layer4_attn_compressor_width, layer22_attn_projected_kv_buffer);
++        RUST_STAR_ENCODE_LAYER12_COMPRESSOR_PROJECTION(
++            layer6_attn_compressor_gate_args, 535,
++            layer4_attn_compressor_width, layer22_attn_projected_score_buffer);
++        RUST_STAR_ENCODE_LAYER12_COMPRESSOR_PROJECTION(
++            layer6_indexer_compressor_kv_args, 538,
++            layer4_indexer_compressor_width, layer22_indexer_projected_kv_buffer);
++        RUST_STAR_ENCODE_LAYER12_COMPRESSOR_PROJECTION(
++            layer6_indexer_compressor_gate_args, 539,
++            layer4_indexer_compressor_width,
++            layer22_indexer_projected_score_buffer);
++#undef RUST_STAR_ENCODE_LAYER12_COMPRESSOR_PROJECTION
++
++        const NSUInteger layer22_tail_activation_offset =
++            (NSUInteger)(rows-compressor_ratio)*n_embd*sizeof(float);
++        if (!encode_projected_compressor_batch_ratio4(
++                context, encoder,
++                layer22_norm_buffer, layer22_tail_activation_offset,
++                model_buffers[594], inner[594], model_buffers[595], inner[595],
++                layer22_attn_projected_kv_buffer,
++                layer22_attn_projected_score_buffer,
++                layer22_attn_score_ape_buffer,
++                layer22_attn_packed_kv_buffer,
++                layer22_attn_packed_score_buffer,
++                model_buffers[593], inner[593], model_buffers[596], inner[596],
++                layer22_attn_state_kv_buffer,
++                layer22_attn_state_score_buffer,
++                layer22_attn_compressed_buffer, 0,
++                layer22_compressed_position_buffer,
++                layer4_attn_compressor_width,
++                layer4_attn_compressor_head, 0u, rows, NO) ||
++            !encode_projected_compressor_batch_ratio4(
++                context, encoder,
++                layer22_norm_buffer, layer22_tail_activation_offset,
++                model_buffers[598], inner[598], model_buffers[599], inner[599],
++                layer22_indexer_projected_kv_buffer,
++                layer22_indexer_projected_score_buffer,
++                layer22_indexer_score_ape_buffer,
++                layer22_indexer_packed_kv_buffer,
++                layer22_indexer_packed_score_buffer,
++                model_buffers[597], inner[597], model_buffers[600], inner[600],
++                layer22_indexer_state_kv_buffer,
++                layer22_indexer_state_score_buffer,
++                layer22_indexer_compressed_buffer, 0,
++                layer22_compressed_position_buffer,
++                layer4_indexer_compressor_width,
++                layer4_indexer_compressor_head, 0u, rows, YES)) {
++            return fail_with_message(error, error_bytes,
++                @"failed to encode prefill layer-20 paired compressors");
++        }
++        uint32_t layer22_raw_elements = raw_rows*head_dim;
++        [encoder setComputePipelineState:context.cpyF32F16Pipeline];
++        [encoder setBytes:&layer22_raw_elements length:sizeof(layer22_raw_elements) atIndex:0];
++        [encoder setBuffer:layer22_kv_norm_buffer offset:0 atIndex:1];
++        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
++        [encoder dispatchThreadgroups:MTLSizeMake(
++                (layer22_raw_elements+1023u)/1024u,1,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++        uint32_t layer22_compressed_elements = compressed_rows*head_dim;
++        [encoder setBytes:&layer22_compressed_elements
++                   length:sizeof(layer22_compressed_elements) atIndex:0];
++        [encoder setBuffer:layer22_attn_compressed_buffer offset:0 atIndex:1];
++        [encoder setBuffer:staged_kv_buffer
++                     offset:(NSUInteger)raw_rows*head_f16_bytes atIndex:2];
++        [encoder dispatchThreadgroups:MTLSizeMake(
++                (layer22_compressed_elements+1023u)/1024u,1,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++        [encoder setComputePipelineState:context.flashBlkPipeline];
++        [encoder setBytes:&block_args length:sizeof(block_args) atIndex:0];
++        [encoder setBuffer:mask_buffer offset:0 atIndex:1];
++        [encoder setBuffer:block_buffer offset:0 atIndex:2];
++        [encoder dispatchThreadgroups:MTLSizeMake(key_rows/64u,256,1)
++             threadsPerThreadgroup:MTLSizeMake(32,1,1)];
++        [encoder setComputePipelineState:context.flashNonvecPipeline];
++        [encoder setBytes:&attention_args length:sizeof(attention_args) atIndex:0];
++        [encoder setBuffer:layer22_q_cur_buffer offset:0 atIndex:1];
++        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
++        [encoder setBuffer:staged_kv_buffer offset:0 atIndex:3];
++        [encoder setBuffer:mask_buffer offset:0 atIndex:4];
++        [encoder setBuffer:model_buffers[601] offset:inner[601] atIndex:5];
++        [encoder setBuffer:pad_buffer offset:0 atIndex:6];
++        [encoder setBuffer:block_buffer offset:0 atIndex:7];
++        [encoder setBuffer:heads_buffer offset:0 atIndex:8];
++        [encoder setThreadgroupMemoryLength:28672u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(256,n_head,1)
++             threadsPerThreadgroup:MTLSizeMake(32,8,1)];
++        [encoder endEncoding];
++
++        id<MTLBlitCommandEncoder> layer22_attention_blit =
++            [command blitCommandEncoder];
++        if (!layer22_attention_blit) return fail_with_message(
++            error, error_bytes,
++            @"failed to create prefill layer-20 attention snapshot encoder");
++        [layer22_attention_blit copyFromBuffer:heads_buffer sourceOffset:0
++                                    toBuffer:layer22_kqv_out_row0_buffer
++                           destinationOffset:0 size:q_dim*sizeof(float)];
++        [layer22_attention_blit endEncoding];
++        encoder = [command computeCommandEncoder];
++        if (!encoder) return fail_with_message(
++            error, error_bytes,
++            @"failed to resume prefill layer-20 attention encoder");
++        [encoder setComputePipelineState:context.ropeTailPipeline];
++        [encoder setBytes:&inverse_args length:sizeof(inverse_args) atIndex:0];
++        [encoder setBuffer:heads_buffer offset:0 atIndex:1];
++        [encoder setBuffer:position_buffer offset:0 atIndex:2];
++        [encoder setBuffer:heads_buffer offset:0 atIndex:3];
++        [encoder setBuffer:heads_buffer offset:0 atIndex:4];
++        [encoder dispatchThreadgroups:MTLSizeMake(n_head,rows,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++        [encoder setComputePipelineState:context.attentionOutputBatchMapPipeline];
++        [encoder setBytes:&map_args length:sizeof(map_args) atIndex:0];
++        [encoder setBuffer:group_ids_buffer offset:0 atIndex:1];
++        [encoder setBuffer:group_map_buffer offset:0 atIndex:2];
++        [encoder setBuffer:group_map_buffer offset:tpe_bytes atIndex:3];
++        [encoder setBuffer:group_map_buffer offset:work_offset atIndex:4];
++        [encoder setThreadgroupMemoryLength:128u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
++             threadsPerThreadgroup:MTLSizeMake(8,1,1)];
++        [encoder setComputePipelineState:context.attentionOutputBatchLowPipeline];
++        [encoder setBytes:&layer6_low_args length:sizeof(layer6_low_args) atIndex:0];
++        [encoder setBuffer:model_buffers[602] offset:inner[602] atIndex:1];
++        [encoder setBuffer:heads_buffer offset:0 atIndex:2];
++        [encoder setBuffer:group_map_buffer offset:0 atIndex:3];
++        [encoder setBuffer:group_map_buffer offset:tpe_bytes atIndex:4];
++        [encoder setBuffer:attention_low_buffer offset:0 atIndex:5];
++        [encoder setBuffer:group_map_buffer offset:work_offset atIndex:6];
++        [encoder setThreadgroupMemoryLength:8192u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(work_cap,output_rank/64u,1)
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
++        [encoder setComputePipelineState:context.q8PrefillPipeline];
++        [encoder setBytes:&layer6_output_args length:sizeof(layer6_output_args) atIndex:0];
++        [encoder setBuffer:model_buffers[603] offset:inner[603] atIndex:1];
++        [encoder setBuffer:attention_low_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer22_attention_output_buffer offset:0 atIndex:3];
++        [encoder setThreadgroupMemoryLength:6144u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,n_embd/64u,1)
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
++        [encoder setComputePipelineState:context.hcExpand4Pipeline];
++        [encoder setBytes:&attention_hc_args length:sizeof(attention_hc_args) atIndex:0];
++        [encoder setBuffer:layer22_attention_output_buffer offset:0 atIndex:1];
++        [encoder setBuffer:layer21_after_ffn_hc_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer22_split_buffer offset:4u*sizeof(float) atIndex:3];
++        [encoder setBuffer:layer22_split_buffer offset:8u*sizeof(float) atIndex:4];
++        [encoder setBuffer:layer22_attention_output_buffer offset:0 atIndex:5];
++        [encoder setBuffer:layer22_after_attention_hc_buffer offset:0 atIndex:6];
++        [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++
++        [encoder endEncoding];
++
++        layer22_attention_blit = [command blitCommandEncoder];
++        if (!layer22_attention_blit) return fail_with_message(
++            error, error_bytes,
++            @"failed to create prefill layer-20 attention tail snapshot encoder");
++        [layer22_attention_blit copyFromBuffer:heads_buffer sourceOffset:0
++                                    toBuffer:layer22_kqv_back_row0_buffer
++                           destinationOffset:0 size:q_dim*sizeof(float)];
++        [layer22_attention_blit copyFromBuffer:attention_low_buffer sourceOffset:0
++                                    toBuffer:layer22_attn_low_row0_buffer
++                           destinationOffset:0
++                                      size:8u*output_rank*sizeof(float)];
++        [layer22_attention_blit endEncoding];
++
++        encoder = [command computeCommandEncoder];
++        if (!encoder) return fail_with_message(
++            error, error_bytes,
++            @"failed to create prefill layer-20 FFN encoder");
++        [encoder setComputePipelineState:context.rmsNormF32Pipeline];
++        [encoder setBytes:&ffn_hc_norm_args length:sizeof(ffn_hc_norm_args) atIndex:0];
++        [encoder setBuffer:layer22_after_attention_hc_buffer offset:0 atIndex:1];
++        [encoder setBuffer:layer22_after_attention_hc_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer22_after_attention_hc_buffer offset:0 atIndex:3];
++        [encoder setBuffer:layer22_ffn_flat_hc_buffer offset:0 atIndex:4];
++        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
++             threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
++
++        [encoder setComputePipelineState:context.f16PrefillPipeline];
++        [encoder setBytes:&ffn_hc_mm_args length:sizeof(ffn_hc_mm_args) atIndex:0];
++        [encoder setBuffer:model_buffers[604] offset:inner[604] atIndex:1];
++        [encoder setBuffer:layer22_ffn_flat_hc_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer22_ffn_mix_buffer offset:0 atIndex:3];
++        [encoder setThreadgroupMemoryLength:8192u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,1,1)
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
++
++        [encoder setComputePipelineState:context.hcIngressPipeline];
++        [encoder setBytes:&ffn_hc_ingress_args length:sizeof(ffn_hc_ingress_args) atIndex:0];
++        [encoder setBuffer:layer22_ffn_mix_buffer offset:0 atIndex:1];
++        [encoder setBuffer:model_buffers[605] offset:inner[605] atIndex:2];
++        [encoder setBuffer:model_buffers[606] offset:inner[606] atIndex:3];
++        [encoder setBuffer:layer22_after_attention_hc_buffer offset:0 atIndex:4];
++        [encoder setBuffer:layer22_ffn_split_buffer offset:0 atIndex:5];
++        [encoder setBuffer:layer22_ffn_cur_buffer offset:0 atIndex:6];
++        [encoder setBuffer:model_buffers[607] offset:inner[607] atIndex:7];
++        [encoder setBuffer:layer22_ffn_norm_buffer offset:0 atIndex:8];
++        [encoder setThreadgroupMemoryLength:(n_embd+4u+32u)*sizeof(float) atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
++             threadsPerThreadgroup:MTLSizeMake(1024,1,1)];
++
++        [encoder setComputePipelineState:context.f16PrefillPipeline];
++        [encoder setBytes:&router_args length:sizeof(router_args) atIndex:0];
++        [encoder setBuffer:model_buffers[608] offset:inner[608] atIndex:1];
++        [encoder setBuffer:layer22_ffn_norm_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer22_router_logits_buffer offset:0 atIndex:3];
++        [encoder setThreadgroupMemoryLength:8192u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,4,1)
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
++
++        [encoder setComputePipelineState:context.routerSoftplusBatchPipeline];
++        [encoder setBuffer:layer22_router_logits_buffer offset:0 atIndex:0];
++        [encoder setBuffer:layer22_router_probs_buffer offset:0 atIndex:1];
++        [encoder dispatchThreads:MTLSizeMake(rows*256u,1,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++        [encoder setComputePipelineState:context.routerSqrtBatchPipeline];
++        [encoder setBuffer:layer22_router_probs_buffer offset:0 atIndex:0];
++        [encoder setBuffer:layer22_router_probs_buffer offset:0 atIndex:1];
++        [encoder dispatchThreads:MTLSizeMake(rows*256u,1,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++        [encoder setComputePipelineState:context.routerTopkRowsBatchPipeline];
++        [encoder setBuffer:layer22_router_probs_buffer offset:0 atIndex:0];
++        [encoder setBuffer:model_buffers[609] offset:inner[609] atIndex:1];
++        [encoder setBuffer:layer22_router_selected_buffer offset:0 atIndex:2];
++        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++        [encoder setComputePipelineState:context.routerGatherWeightsBatchPipeline];
++        [encoder setBuffer:layer22_router_probs_buffer offset:0 atIndex:0];
++        [encoder setBuffer:layer22_router_selected_buffer offset:0 atIndex:1];
++        [encoder setBuffer:layer22_router_weights_buffer offset:0 atIndex:2];
++        [encoder dispatchThreads:MTLSizeMake(6,rows,1)
++             threadsPerThreadgroup:MTLSizeMake(6,1,1)];
++
++        [encoder setComputePipelineState:context.compressorSumRowsPipeline];
++        [encoder setBytes:&router_sum_args length:sizeof(router_sum_args) atIndex:0];
++        [encoder setBuffer:layer22_router_weights_buffer offset:0 atIndex:1];
++        [encoder setBuffer:layer22_router_weight_sums_buffer offset:0 atIndex:2];
++        [encoder setThreadgroupMemoryLength:32u*sizeof(float) atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
++             threadsPerThreadgroup:MTLSizeMake(6,1,1)];
++        [encoder setComputePipelineState:context.routerClampSumsBatchPipeline];
++        [encoder setBuffer:layer22_router_weight_sums_buffer offset:0 atIndex:0];
++        [encoder setBuffer:layer22_router_weight_sums_buffer offset:0 atIndex:1];
++        [encoder dispatchThreads:MTLSizeMake(rows,1,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++        [encoder setComputePipelineState:context.routerDivideBatchPipeline];
++        [encoder setBuffer:layer22_router_weights_buffer offset:0 atIndex:0];
++        [encoder setBuffer:layer22_router_weight_sums_buffer offset:0 atIndex:1];
++        [encoder setBuffer:layer22_router_weights_buffer offset:0 atIndex:2];
++        [encoder dispatchThreads:MTLSizeMake(6,rows,1)
++             threadsPerThreadgroup:MTLSizeMake(6,1,1)];
++        [encoder setComputePipelineState:context.routerScaleBatchPipeline];
++        [encoder setBuffer:layer22_router_weights_buffer offset:0 atIndex:0];
++        [encoder setBuffer:layer22_router_weights_buffer offset:0 atIndex:1];
++        [encoder dispatchThreads:MTLSizeMake(rows*6u,1,1)
++             threadsPerThreadgroup:MTLSizeMake(252,1,1)];
++
++        [encoder setComputePipelineState:context.routedBatchMapPipeline];
++        [encoder setBytes:&routed_map_args length:sizeof(routed_map_args) atIndex:0];
++        [encoder setBuffer:layer22_router_selected_buffer offset:0 atIndex:1];
++        [encoder setBuffer:routed_map_buffer offset:0 atIndex:2];
++        [encoder setBuffer:routed_map_buffer offset:routed_map_tpe_bytes atIndex:3];
++        [encoder setBuffer:routed_map_buffer offset:routed_map_work_offset atIndex:4];
++        [encoder setThreadgroupMemoryLength:256u*6u*sizeof(uint16_t) atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(1,1,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++
++        [encoder setComputePipelineState:context.routedBatchPairSwigluPipeline];
++        [encoder setBytes:&routed_gate_args length:sizeof(routed_gate_args) atIndex:0];
++        [encoder setBytes:&routed_activation_args length:sizeof(routed_activation_args) atIndex:1];
++        [encoder setBuffer:model_buffers[610] offset:inner[610] atIndex:2];
++        [encoder setBuffer:model_buffers[611] offset:inner[611] atIndex:3];
++        [encoder setBuffer:layer22_ffn_norm_buffer offset:0 atIndex:4];
++        [encoder setBuffer:routed_map_buffer offset:0 atIndex:5];
++        [encoder setBuffer:routed_map_buffer offset:routed_map_tpe_bytes atIndex:6];
++        [encoder setBuffer:routed_mid_buffer offset:0 atIndex:7];
++        [encoder setBuffer:layer22_router_weights_buffer offset:0 atIndex:8];
++        [encoder setBuffer:routed_map_buffer offset:routed_map_work_offset atIndex:9];
++        [encoder setThreadgroupMemoryLength:16384u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(routed_map_work_cap,32,1)
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
++
++        [encoder setComputePipelineState:context.routedBatchDownPipeline];
++        [encoder setBytes:&routed_down_args length:sizeof(routed_down_args) atIndex:0];
++        [encoder setBuffer:model_buffers[612] offset:inner[612] atIndex:1];
++        [encoder setBuffer:routed_mid_buffer offset:0 atIndex:2];
++        [encoder setBuffer:routed_map_buffer offset:0 atIndex:3];
++        [encoder setBuffer:routed_map_buffer offset:routed_map_tpe_bytes atIndex:4];
++        [encoder setBuffer:routed_experts_buffer offset:0 atIndex:5];
++        [encoder setBuffer:routed_map_buffer offset:routed_map_work_offset atIndex:6];
++        [encoder setThreadgroupMemoryLength:8192u atIndex:0];
++        [encoder dispatchThreadgroups:MTLSizeMake(routed_map_work_cap,64,1)
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)];
++        [encoder setComputePipelineState:context.routedBatchSumPipeline];
++        [encoder setBytes:&routed_sum_args length:sizeof(routed_sum_args) atIndex:0];
++        [encoder setBuffer:routed_experts_buffer offset:0 atIndex:1];
++        [encoder setBuffer:layer22_routed_out_buffer offset:0 atIndex:2];
++        [encoder dispatchThreadgroups:MTLSizeMake(rows,1,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++
++#define RUST_STAR_ENCODE_L14_SHARED(args, index, input, output, width) do { \
++        [encoder setComputePipelineState:context.q8PrefillPipeline]; \
++        [encoder setBytes:&(args) length:sizeof(args) atIndex:0]; \
++        [encoder setBuffer:model_buffers[(index)] offset:inner[(index)] atIndex:1]; \
++        [encoder setBuffer:(input) offset:0 atIndex:2]; \
++        [encoder setBuffer:(output) offset:0 atIndex:3]; \
++        [encoder setThreadgroupMemoryLength:6144u atIndex:0]; \
++        [encoder dispatchThreadgroups:MTLSizeMake(rows/32u,(width)/64u,1) \
++             threadsPerThreadgroup:MTLSizeMake(128,1,1)]; \
++    } while (0)
++        RUST_STAR_ENCODE_L14_SHARED(shared_gate_args, 553, layer22_ffn_norm_buffer,
++            shared_gate_buffer, 2048);
++        RUST_STAR_ENCODE_L14_SHARED(shared_up_args, 554, layer22_ffn_norm_buffer,
++            shared_up_buffer, 2048);
++        [encoder setComputePipelineState:context.sharedSwigluBatchPipeline];
++        [encoder setBytes:&shared_swiglu_args length:sizeof(shared_swiglu_args) atIndex:0];
++        [encoder setBuffer:shared_gate_buffer offset:0 atIndex:1];
++        [encoder setBuffer:shared_up_buffer offset:0 atIndex:2];
++        [encoder setBuffer:shared_mid_buffer offset:0 atIndex:3];
++        [encoder dispatchThreadgroups:MTLSizeMake((rows*2048u+255u)/256u,1,1)
++             threadsPerThreadgroup:MTLSizeMake(256,1,1)];
++        RUST_STAR_ENCODE_L14_SHARED(shared_down_args, 555, shared_mid_buffer,
++            layer22_shared_out_buffer, n_embd);
++#undef RUST_STAR_ENCODE_L14_SHARED
++
++        [encoder setComputePipelineState:context.hcExpand4Pipeline];
++        [encoder setBytes:&ffn_hc_post_args length:sizeof(ffn_hc_post_args) atIndex:0];
++        [encoder setBuffer:layer22_routed_out_buffer offset:0 atIndex:1];
++        [encoder setBuffer:layer22_after_attention_hc_buffer offset:0 atIndex:2];
++        [encoder setBuffer:layer22_ffn_split_buffer offset:4u*sizeof(float) atIndex:3];
++        [encoder setBuffer:layer22_ffn_split_buffer offset:8u*sizeof(float) atIndex:4];
++        [encoder setBuffer:layer22_shared_out_buffer offset:0 atIndex:5];
++        [encoder setBuffer:layer22_after_ffn_hc_buffer offset:0 atIndex:6];
+         [encoder dispatchThreadgroups:MTLSizeMake((rows*n_embd+255u)/256u,1,1)
+              threadsPerThreadgroup:MTLSizeMake(256,1,1)];
+         [encoder endEncoding];
+@@ -19968,15 +20735,102 @@ int rust_star_metal_run_prefill_layer2_attention(
+         memcpy(layer21_shared_out_final_tile,
+                (const uint8_t *)layer21_shared_out_buffer.contents+final_tile_offset,
+                32u*n_embd*sizeof(float));
++        memcpy(layer22_hc_attn_pre_final_tile,
++               (const uint8_t *)layer22_cur_buffer.contents+final_tile_offset,
++               32u*n_embd*sizeof(float));
++        memcpy(layer22_attn_norm_final_tile,
++               (const uint8_t *)layer22_norm_buffer.contents+final_tile_offset,
++               32u*n_embd*sizeof(float));
++        memcpy(layer22_q_lora_final_tile,
++               (const uint8_t *)layer22_q_lora_buffer.contents+
++                   layer4_q_rank_final_tile_offset,
++               32u*1024u*sizeof(float));
++        memcpy(layer22_q_lora_norm_final_tile,
++               (const uint8_t *)layer22_q_norm_buffer.contents+
++                   layer4_q_rank_final_tile_offset,
++               32u*1024u*sizeof(float));
++        memcpy(layer22_kv_raw_final_tile,
++               (const uint8_t *)layer22_kv_raw_buffer.contents+
++                   layer4_kv_final_tile_offset,
++               32u*512u*sizeof(float));
++        memcpy(layer22_kv_norm_final_tile,
++               (const uint8_t *)layer22_kv_norm_snapshot_buffer.contents+
++                   layer4_kv_final_tile_offset,
++               32u*512u*sizeof(float));
++        memcpy(layer22_q_raw_final_tile,
++               (const uint8_t *)layer22_q_raw_buffer.contents+
++                   layer3_q_final_tile_offset,
++               32u*q_dim*sizeof(float));
++        memcpy(layer22_q_cur_final_tile,
++               (const uint8_t *)layer22_q_cur_buffer.contents+
++                   layer3_q_final_tile_offset,
++               32u*q_dim*sizeof(float));
++        memcpy(layer22_kv_rope_final_tile,
++               (const uint8_t *)layer22_kv_rope_buffer.contents+
++                   layer4_kv_final_tile_offset,
++               32u*512u*sizeof(float));
++        memcpy(layer22_kv_cur_final_tile,
++               (const uint8_t *)layer22_kv_norm_buffer.contents+
++                   layer4_kv_final_tile_offset,
++               32u*512u*sizeof(float));
++        memcpy(layer22_attn_compressed,
++               layer22_attn_compressed_buffer.contents,
++               layer4_attn_compressed_bytes);
++        memcpy(layer22_attn_state_kv,
++               layer22_attn_state_kv_buffer.contents, layer4_attn_state_bytes);
++        memcpy(layer22_attn_state_score,
++               layer22_attn_state_score_buffer.contents, layer4_attn_state_bytes);
++        memcpy(layer22_indexer_compressed,
++               layer22_indexer_compressed_buffer.contents,
++               layer4_indexer_compressed_bytes);
++        memcpy(layer22_indexer_state_kv,
++               layer22_indexer_state_kv_buffer.contents,
++               layer4_indexer_state_bytes);
++        memcpy(layer22_indexer_state_score,
++               layer22_indexer_state_score_buffer.contents,
++               layer4_indexer_state_bytes);
++        memcpy(layer22_kqv_out_row0,
++               layer22_kqv_out_row0_buffer.contents, q_dim*sizeof(float));
++        memcpy(layer22_kqv_back_row0,
++               layer22_kqv_back_row0_buffer.contents, q_dim*sizeof(float));
++        memcpy(layer22_attn_low_row0,
++               layer22_attn_low_row0_buffer.contents,
++               8u*output_rank*sizeof(float));
++        memcpy(layer22_attention_output,
++               layer22_attention_output_buffer.contents, output_bytes);
++        memcpy(layer22_after_attention_hc,
++               layer22_after_attention_hc_buffer.contents, hc_bytes);
++        memcpy(layer22_after_ffn_hc,
++               layer22_after_ffn_hc_buffer.contents, hc_bytes);
++        memcpy(layer22_ffn_cur_final_tile,
++               (const uint8_t *)layer22_ffn_cur_buffer.contents+final_tile_offset,
++               32u*n_embd*sizeof(float));
++        memcpy(layer22_ffn_norm_final_tile,
++               (const uint8_t *)layer22_ffn_norm_buffer.contents+final_tile_offset,
++               32u*n_embd*sizeof(float));
++        memcpy(layer22_router_selected_final_tile,
++               (const uint8_t *)layer22_router_selected_buffer.contents+
++                   final_selected_offset,
++               32u*6u*sizeof(int32_t));
++        memcpy(layer22_router_weights_final_tile,
++               (const uint8_t *)layer22_router_weights_buffer.contents+
++                   final_selected_offset,
++               32u*6u*sizeof(float));
++        memcpy(layer22_routed_out_final_tile,
++               (const uint8_t *)layer22_routed_out_buffer.contents+final_tile_offset,
++               32u*n_embd*sizeof(float));
++        memcpy(layer22_shared_out_final_tile,
++               (const uint8_t *)layer22_shared_out_buffer.contents+final_tile_offset,
++               32u*n_embd*sizeof(float));
+         uint32_t pointer_matches = 0;
+-        for (uint32_t index = 0; index < 524u; index++) {
++        for (uint32_t index = 0; index < 556u; index++) {
+             pointer_matches += matches[index] ? 1u : 0u;
+         }
+         result->rows = rows;
+         result->raw_kv_rows = raw_rows;
+         result->compressed_kv_rows = compressed_rows;
+-        result->dispatches = 1132u;
+-        result->wrapped_model_ranges = 524u;
++        result->dispatches = 1202u;
++        result->wrapped_model_ranges = 556u;
+         result->pointer_matches = pointer_matches;
+         result->layer3_compressed_kv_rows = layer3_compressed_rows;
+         result->wall_ms = wall_end-wall_start;
+@@ -20167,6 +21021,18 @@ int rust_star_metal_run_prefill_layer2_attention(
+         context.prefillLayer21AfterAttentionHc =
+             layer21_after_attention_hc_buffer;
+         context.prefillLayer21AfterFfnHc = layer21_after_ffn_hc_buffer;
++        context.prefillLayer22FullQ = layer22_q_cur_buffer;
++        context.prefillLayer22FullKv = layer22_kv_norm_buffer;
++        context.prefillLayer22InputHc = layer21_after_ffn_hc_buffer;
++        context.prefillLayer22AttnSplit = layer22_split_buffer;
++        context.prefillLayer22AttnCompressed = layer22_attn_compressed_buffer;
++        context.prefillLayer22AttnStateKv = layer22_attn_state_kv_buffer;
++        context.prefillLayer22AttnStateScore = layer22_attn_state_score_buffer;
++        context.prefillLayer22IndexerCompressed = layer22_indexer_compressed_buffer;
++        context.prefillLayer22IndexerStateKv = layer22_indexer_state_kv_buffer;
++        context.prefillLayer22IndexerStateScore = layer22_indexer_state_score_buffer;
++        context.prefillLayer22AfterAttentionHc = layer22_after_attention_hc_buffer;
++        context.prefillLayer22AfterFfnHc = layer22_after_ffn_hc_buffer;
+         return 1;
+     }
+ }

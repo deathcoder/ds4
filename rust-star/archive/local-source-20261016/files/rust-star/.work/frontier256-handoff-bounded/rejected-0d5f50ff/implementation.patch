@@ -1,0 +1,101 @@
+diff --git a/rust-star/runtime/src/metal_shim.m b/rust-star/runtime/src/metal_shim.m
+index f268a848..c950925f 100644
+--- a/rust-star/runtime/src/metal_shim.m
++++ b/rust-star/runtime/src/metal_shim.m
+@@ -331,6 +331,8 @@ @interface RustStarMetalContext : NSObject
+ @property(nonatomic, strong) id<MTLComputePipelineState> flashNonvecNsg8Pipeline;
+ @property(nonatomic, strong) id<MTLComputePipelineState> flashNonvecNsg8KvpadPipeline;
+ @property(nonatomic, strong) id<MTLComputePipelineState> flashVecPipeline;
++@property(nonatomic, strong) id<MTLComputePipelineState> flashVecNsg2Pipeline;
++@property(nonatomic, strong) id<MTLComputePipelineState> flashVecNsg4Pipeline;
+ @property(nonatomic, strong) id<MTLComputePipelineState> flashReducePipeline;
+ @property(nonatomic, strong) id<MTLComputePipelineState> flashReduceInverseRopePipeline;
+ @property(nonatomic, assign) BOOL useFlashReduceInverseRope;
+@@ -1478,6 +1480,52 @@ static int ensure_attention_ingress_pipelines(
+     return 1;
+ }
+ 
++/* Match oracle-v5 gathered decode: 32 split-K groups, 32 keys per SIMD
++ * group. The SIMD-group count changes the floating-point reduction order. */
++static uint32_t flash_vec_decode_nsg(uint32_t n_keys) {
++    uint32_t nsg = 1u;
++    while (2u * 32u * nsg * 32u < n_keys && nsg < 4u) nsg *= 2u;
++    return nsg;
++}
++
++static id<MTLComputePipelineState> flash_vec_decode_pipeline(
++    RustStarMetalContext *context, uint32_t nsg, char *error, size_t error_bytes)
++{
++    if (nsg == 1u) return context.flashVecPipeline;
++    if (nsg == 2u && context.flashVecNsg2Pipeline) return context.flashVecNsg2Pipeline;
++    if (nsg == 4u && context.flashVecNsg4Pipeline) return context.flashVecNsg4Pipeline;
++    if (nsg != 2u && nsg != 4u) {
++        fail_with_message(error, error_bytes, @"invalid decode FlashAttention SIMD-group count");
++        return nil;
++    }
++    bool enabled = true, disabled = false;
++    int32_t head_dim = 512, groups = (int32_t)nsg, nwg = 32;
++    MTLFunctionConstantValues *constants = [MTLFunctionConstantValues new];
++    [constants setConstantValue:&enabled type:MTLDataTypeBool atIndex:400];
++    [constants setConstantValue:&enabled type:MTLDataTypeBool atIndex:401];
++    [constants setConstantValue:&disabled type:MTLDataTypeBool atIndex:402];
++    [constants setConstantValue:&disabled type:MTLDataTypeBool atIndex:403];
++    [constants setConstantValue:&enabled type:MTLDataTypeBool atIndex:404];
++    [constants setConstantValue:&disabled type:MTLDataTypeBool atIndex:405];
++    [constants setConstantValue:&head_dim type:MTLDataTypeInt atIndex:420];
++    [constants setConstantValue:&head_dim type:MTLDataTypeInt atIndex:421];
++    [constants setConstantValue:&groups type:MTLDataTypeInt atIndex:422];
++    [constants setConstantValue:&nwg type:MTLDataTypeInt atIndex:423];
++    NSError *compile_error = nil;
++    id<MTLFunction> function = [context.attentionIngressLibrary
++        newFunctionWithName:@"kernel_flash_attn_ext_vec_f16_dk512_dv512"
++        constantValues:constants error:&compile_error];
++    id<MTLComputePipelineState> pipeline = function
++        ? [context.device newComputePipelineStateWithFunction:function error:&compile_error] : nil;
++    if (!pipeline) {
++        fail_with_message(error, error_bytes, compile_error.localizedDescription);
++        return nil;
++    }
++    if (nsg == 2u) context.flashVecNsg2Pipeline = pipeline;
++    else context.flashVecNsg4Pipeline = pipeline;
++    return pipeline;
++}
++
+ static int ensure_attention_output_pipelines(
+     RustStarMetalContext *context,
+     char *error,
+@@ -41776,6 +41824,13 @@ int rust_star_metal_run_attention_ingress(
+             (full_layer && !ensure_moe_output_pipelines(context, error, error_bytes))) return 0;
+         memset(result, 0, sizeof(*result));
+ 
++        const uint32_t flash_vec_nsg = flash_vec_decode_nsg(attention_cache_rows);
++        id<MTLComputePipelineState> flash_vec_pipeline = nil;
++        if (attention_read && !sparse_indexed_attention) {
++            flash_vec_pipeline = flash_vec_decode_pipeline(context, flash_vec_nsg, error, error_bytes);
++            if (!flash_vec_pipeline) return 0;
++        }
++
+         NSUInteger sparse_sort_threads = 1u;
+         NSUInteger sparse_sort_smem = 0u;
+         uint32_t sparse_sort_blocks = 0u;
+@@ -43046,7 +43101,7 @@ int rust_star_metal_run_attention_ingress(
+                 [encoder dispatchThreadgroups:MTLSizeMake(32,1,1)
+                      threadsPerThreadgroup:MTLSizeMake(32,1,1)];
+ 
+-                [encoder setComputePipelineState:context.flashVecPipeline];
++                [encoder setComputePipelineState:flash_vec_pipeline];
+                 [encoder setBytes:&flash_vec_args length:sizeof(flash_vec_args) atIndex:0];
+                 [encoder setBuffer:q_rope_work_buffer offset:0 atIndex:1];
+                 [encoder setBuffer:staged_kv_buffer offset:0 atIndex:2];
+@@ -43055,9 +43110,9 @@ int rust_star_metal_run_attention_ingress(
+                 [encoder setBuffer:sinks_weights offset:sinks_inner atIndex:5];
+                 [encoder setBuffer:flash_pad_buffer offset:0 atIndex:6];
+                 [encoder setBuffer:flash_tmp_buffer offset:0 atIndex:7];
+-                [encoder setThreadgroupMemoryLength:3328u atIndex:0];
++                [encoder setThreadgroupMemoryLength:3328u*flash_vec_nsg atIndex:0];
+                 [encoder dispatchThreadgroups:MTLSizeMake(1,64,32)
+-                     threadsPerThreadgroup:MTLSizeMake(32,1,1)];
++                     threadsPerThreadgroup:MTLSizeMake(32,flash_vec_nsg,1)];
+ 
+                 [encoder setComputePipelineState:fused_dense_inverse_rope
+                     ? context.flashReduceInverseRopePipeline
